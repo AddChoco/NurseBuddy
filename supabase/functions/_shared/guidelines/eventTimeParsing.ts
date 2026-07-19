@@ -55,7 +55,12 @@ function timeTokenPattern(source: string): RegExp {
 }
 
 export function parseDocumentedEventTime(input: string): string | null {
-  if (!input.trim()) return null;
+  const allTimes = parseAllDocumentedEventTimes(input);
+  return allTimes[0] ?? null;
+}
+
+export function parseAllDocumentedEventTimes(input: string): string[] {
+  if (!input.trim()) return [];
 
   const prioritizedPatterns = [
     timeTokenPattern(String.raw`\bat\s+(\d{1,2}:\d{2}|\d{3,4})(?!\d)`),
@@ -68,12 +73,19 @@ export function parseDocumentedEventTime(input: string): string | null {
     timeTokenPattern(String.raw`\b(\d{3})(?!\d)`),
   ];
 
+  const seen = new Set<string>();
+  const results: string[] = [];
+
   for (const pattern of prioritizedPatterns) {
-    const matches = findTimeMatches(input, pattern);
-    if (matches.length > 0) return matches[0];
+    for (const token of findTimeMatches(input, pattern)) {
+      const normalized = token.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      results.push(token);
+    }
   }
 
-  return null;
+  return results;
 }
 
 export function inputDocumentsEventTime(input: string): boolean {
@@ -81,14 +93,17 @@ export function inputDocumentsEventTime(input: string): boolean {
 }
 
 export function outputIncludesDocumentedEventTime(input: string, output: string): boolean {
-  const eventTime = parseDocumentedEventTime(input);
-  if (!eventTime) return true;
+  const eventTimes = parseAllDocumentedEventTimes(input);
+  if (eventTimes.length === 0) return true;
 
   const normalizedOutput = output.replace(/\s+/g, '').toLowerCase();
-  const normalizedTime = eventTime.replace(/\s+/g, '').toLowerCase();
-  if (normalizedOutput.includes(normalizedTime)) return true;
-  if (normalizedTime.includes(':')) {
-    return normalizedOutput.includes(normalizedTime.replace(':', ''));
-  }
-  return false;
+
+  return eventTimes.some((eventTime) => {
+    const normalizedTime = eventTime.replace(/\s+/g, '').toLowerCase();
+    if (normalizedOutput.includes(normalizedTime)) return true;
+    if (normalizedTime.includes(':')) {
+      return normalizedOutput.includes(normalizedTime.replace(':', ''));
+    }
+    return false;
+  });
 }

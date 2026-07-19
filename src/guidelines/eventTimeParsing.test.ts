@@ -20,4 +20,10 @@ describe('eventTimeParsing', () => {
     expect(outputIncludesDocumentedEventTime(input, 'Resident afebrile at follow-up. Assessment completed at 1830.')).toBe(true);
     expect(outputIncludesDocumentedEventTime(input, 'Event time:\n101')).toBe(false);
   });
+
+  it('accepts any supported event time when multiple times are documented', () => {
+    const input =
+      'Follow-up assessment. Last elevated temperature was 101.8°F on 07/17/26 at 1800. PRN Tylenol administered at 1830.';
+    expect(outputIncludesDocumentedEventTime(input, 'Interventions completed:\nPRN Tylenol administered at 1830.')).toBe(true);
+  });
 });
