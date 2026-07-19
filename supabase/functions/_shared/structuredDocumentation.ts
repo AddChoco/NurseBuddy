@@ -1,6 +1,6 @@
-import type { GuidelineDefinition } from './guidelines/types.ts';
-import { detectAssessmentType, type AssessmentType } from './guidelines/facilityTemplateMode.ts';
-import type { DocumentationOutputMode } from './guidelines/facilityTemplateMode.ts';
+import type { GuidelineDefinition } from '../guidelines/types';
+import { detectAssessmentType, type AssessmentType } from '../guidelines/facilityTemplateMode';
+import type { DocumentationOutputMode } from '../guidelines/facilityTemplateMode';
 import {
   DEFAULT_DOCUMENTATION_OUTPUT_MODE,
   FACILITY_TEMPLATE_COMPLETION_DIRECTIVE,
@@ -10,39 +10,39 @@ import {
   isFacilityTemplateMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
-} from './guidelines/facilityTemplateMode.ts';
+} from '../guidelines/facilityTemplateMode';
 import {
   buildGuidelineContextBlock,
   getAssessmentInstructionsForType,
   getDocumentationTypeInstructions,
-} from './guidelines/guidelineEngine.ts';
-import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
-import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
-import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from './guidelines/eventTimeParsing.ts';
-import { validatePlanAgainstLibrary } from './guidelines/guidelinePlanLibrary.ts';
+} from '../guidelines/guidelineEngine';
+import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
+import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
+import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from '../guidelines/eventTimeParsing';
+import { validatePlanAgainstLibrary } from '../guidelines/guidelinePlanLibrary';
 import {
   enrichFacilityPlanPrompts,
   planDocumentsNursingInterventions,
   planDocumentsPirCompleted,
   type PlanEnrichmentResult,
-} from './guidelines/planPromptEnrichment.ts';
+} from '../guidelines/planPromptEnrichment';
 import {
   enrichFacilitySoapSections,
   extractSubjectivePromptsFromTemplate,
   subjectivePromptHasValue,
-} from './guidelines/soapSectionEnrichment.ts';
+} from '../guidelines/soapSectionEnrichment';
 import {
   extractColonPromptsFromTemplate,
   getFacilityFormTemplate,
-} from './guidelines/facilityFormTemplates.ts';
-import { buildDocumentationQualityCheck } from './guidelines/documentationQualityCheck.ts';
+} from '../guidelines/facilityFormTemplates';
+import { buildDocumentationQualityCheck } from '../guidelines/documentationQualityCheck';
 import {
   buildNegativeFillerProhibitionBlock,
   buildValidationScanText,
   detectNegativeFillerClaims,
   sanitizeFacilityTemplateSections,
-} from './guidelines/facilityTemplateSanitization.ts';
-import type { TemplateLockSchema, TemplateLockValues } from './guidelines/templateLockMode.ts';
+} from '../guidelines/facilityTemplateSanitization';
+import type { TemplateLockSchema, TemplateLockValues } from '../guidelines/templateLockMode';
 
 export interface StructuredSoap {
   subjective: string;
@@ -199,7 +199,20 @@ export function parseStructuredDocumentation(raw: string): StructuredDocumentati
   }
 }
 
+function isPreRenderedFacilityTemplateSoap(soap: StructuredSoap): boolean {
+  const firstLine = soap.subjective.trim().split('\n')[0] ?? '';
+  return /^SUBJECTIVE:\s*$/i.test(firstLine) || /Reported symptoms:/i.test(soap.subjective);
+}
+
 export function formatSoapDocument(soap: StructuredSoap): string {
+  if (isPreRenderedFacilityTemplateSoap(soap)) {
+    return [soap.subjective, soap.objective, soap.assessment, soap.plan]
+      .map((section) => section.trim())
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+  }
+
   return [
     "SUBJECTIVE:",
     soap.subjective.trim(),

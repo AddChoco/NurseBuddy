@@ -1,11 +1,11 @@
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
-import { parseDocumentedEventTime } from './eventTimeParsing';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
+import { parseDocumentedEventTime } from './eventTimeParsing.ts';
 import {
   evaluateGuidelinePlanRules,
   createPlanDocumentationContext,
-} from './guidelinePlanRuleEngine';
-import { getStaffMonitoringInstructions } from './planPromptEnrichment';
+} from './guidelinePlanRuleEngine.ts';
+import { getStaffMonitoringInstructions } from './planPromptEnrichment.ts';
 import {
   buildTemplateLockSchema,
   emptyTemplateLockValues,
@@ -14,7 +14,7 @@ import {
   validateTemplateLockValues,
   type TemplateLockSchema,
   type TemplateLockValues,
-} from './templateLockMode';
+} from './templateLockMode.ts';
 
 function setIfEmpty(
   target: Record<string, string>,
@@ -275,17 +275,14 @@ export function mergeTemplateLockValues(
       ? deterministicValues.plan[field.id]
       : deterministicValues[field.section][field.id];
 
-    const chosen =
-      field.kind === 'scalar'
-        ? (deterministicValue || aiValue || '')
-        : (aiValue || deterministicValue || '');
+    const chosen = deterministicValue || aiValue || '';
 
     if (field.section === 'plan') merged.plan[field.id] = chosen;
     else merged[field.section][field.id] = chosen;
   }
 
   merged.assessment.clinicalSummary =
-    aiValues.assessment.clinicalSummary || deterministicValues.assessment.clinicalSummary;
+    deterministicValues.assessment.clinicalSummary || aiValues.assessment.clinicalSummary;
 
   merged.subjective.sectionNarrative =
     aiValues.subjective.sectionNarrative || deterministicValues.subjective.sectionNarrative || '';

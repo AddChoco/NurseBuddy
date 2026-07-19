@@ -275,17 +275,14 @@ export function mergeTemplateLockValues(
       ? deterministicValues.plan[field.id]
       : deterministicValues[field.section][field.id];
 
-    const chosen =
-      field.kind === 'scalar'
-        ? (deterministicValue || aiValue || '')
-        : (aiValue || deterministicValue || '');
+    const chosen = deterministicValue || aiValue || '';
 
     if (field.section === 'plan') merged.plan[field.id] = chosen;
     else merged[field.section][field.id] = chosen;
   }
 
   merged.assessment.clinicalSummary =
-    aiValues.assessment.clinicalSummary || deterministicValues.assessment.clinicalSummary;
+    deterministicValues.assessment.clinicalSummary || aiValues.assessment.clinicalSummary;
 
   merged.subjective.sectionNarrative =
     aiValues.subjective.sectionNarrative || deterministicValues.subjective.sectionNarrative || '';

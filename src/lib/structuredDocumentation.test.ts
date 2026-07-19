@@ -167,4 +167,17 @@ describe('structured documentation helpers', () => {
     expect(sbarText).toMatch(/^SITUATION:\nExample situation/m);
     expect(sbarText).not.toMatch(/\*\*/);
   });
+
+  it('does not duplicate headings for pre-rendered facility template sections', () => {
+    const soapText = formatSoapDocument({
+      subjective: 'SUBJECTIVE:\nReported symptoms:',
+      objective: 'OBJECTIVE:\nCurrent temperature:\n98.4°F',
+      assessment: 'ASSESSMENT:\nElevated Temperature Follow-up.',
+      plan: 'PLAN:\nNursing interventions completed:',
+    });
+
+    expect(soapText.match(/SUBJECTIVE:/g)?.length).toBe(1);
+    expect(soapText.match(/OBJECTIVE:/g)?.length).toBe(1);
+    expect(soapText).toContain('Current temperature:\n98.4°F');
+  });
 });

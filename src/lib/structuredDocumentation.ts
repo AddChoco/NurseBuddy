@@ -199,7 +199,20 @@ export function parseStructuredDocumentation(raw: string): StructuredDocumentati
   }
 }
 
+function isPreRenderedFacilityTemplateSoap(soap: StructuredSoap): boolean {
+  const firstLine = soap.subjective.trim().split('\n')[0] ?? '';
+  return /^SUBJECTIVE:\s*$/i.test(firstLine) || /Reported symptoms:/i.test(soap.subjective);
+}
+
 export function formatSoapDocument(soap: StructuredSoap): string {
+  if (isPreRenderedFacilityTemplateSoap(soap)) {
+    return [soap.subjective, soap.objective, soap.assessment, soap.plan]
+      .map((section) => section.trim())
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+  }
+
   return [
     "SUBJECTIVE:",
     soap.subjective.trim(),
