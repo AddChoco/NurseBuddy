@@ -1,11 +1,11 @@
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
 import {
   extractPlanStandingInstructions,
   getFacilityFormTemplate,
-} from './facilityFormTemplates';
-import { isNegativeFillerValue } from './facilityTemplateSanitization';
-import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction';
+} from './facilityFormTemplates.ts';
+import { isNegativeFillerValue } from './facilityTemplateSanitization.ts';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
 
 export type TemplateLockSection = 'subjective' | 'objective' | 'assessment' | 'plan';
 
@@ -225,7 +225,7 @@ function collectUnknownKeys(
 ): void {
   for (const key of Object.keys(record)) {
     const fullKey = prefix ? `${prefix}.${key}` : key;
-    if (!allowed.has(fullKey)) unknownKeys.push(fullKey);
+    if (!allowed.has(key)) unknownKeys.push(fullKey);
   }
 }
 
@@ -254,6 +254,11 @@ export function parseTemplateLockResponse(
   const allowedTop = new Set(['subjective', 'objective', 'assessment', 'plan', 'fieldValues', 'sbar', 'qualityCheck']);
   for (const key of Object.keys(parsed)) {
     if (!allowedTop.has(key)) unknownKeys.push(key);
+  }
+
+  const allowedFieldSections = new Set(['subjective', 'objective', 'assessment', 'plan']);
+  for (const key of Object.keys(fieldValues)) {
+    if (!allowedFieldSections.has(key)) unknownKeys.push(key);
   }
 
   const subjectiveIds = new Set(schema.fields.filter((f) => f.section === 'subjective').map((f) => f.id));

@@ -1,4 +1,4 @@
-export const EDGE_FUNCTION_VERSION = '2026-07-18-template-lock-v9';
+export const EDGE_FUNCTION_VERSION = '2026-07-18-template-lock-v10';
 export const TEMPLATE_MODE_LABEL = 'facility-template-v2';
 export const FACILITY_TEMPLATE_MODE_MARKER = 'FACILITY TEMPLATE COMPLETION MODE';
 

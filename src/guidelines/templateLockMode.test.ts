@@ -35,7 +35,9 @@ describe('templateLockMode', () => {
       schema,
     );
 
-    expect(result.unknownKeys.length).toBeGreaterThan(0);
+    expect(result.unknownKeys).toContain('subjective.extraField');
+    expect(result.unknownKeys).not.toContain('subjective.reportedSymptoms');
+    expect(result.unknownKeys).toContain('rogueKey');
     expect(result.errors.some((error) => /Unknown JSON keys rejected/i.test(error))).toBe(true);
   });
 
