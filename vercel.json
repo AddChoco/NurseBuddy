@@ -1,5 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "env": {
+    "VITE_SUPABASE_URL": "https://rsdcrgzejnaotpeeauep.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "sb_publishable_ISpr5Ztcdx_5kcnGcnaRlA_CISIDfX4"
+  }
 }

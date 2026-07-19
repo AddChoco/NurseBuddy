@@ -10,7 +10,20 @@ import type {
 import { GUIDELINES, SOAP_OUTPUT_LABEL, getOptionalOutputLabel } from '../constants';
 import { stripMarkdown } from './structuredDocumentation';
 
-const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-documentation`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+function requireSupabaseConfig(): { url: string; anonKey: string } {
+  if (!SUPABASE_URL?.trim() || !SUPABASE_ANON_KEY?.trim()) {
+    throw new Error(
+      'Supabase configuration is missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY for this deployment.',
+    );
+  }
+
+  return { url: SUPABASE_URL.trim(), anonKey: SUPABASE_ANON_KEY.trim() };
+}
+
+const FUNCTION_PATH = '/functions/v1/generate-documentation';
 
 interface GenerateRequest {
   guideline: string;
@@ -48,11 +61,12 @@ function buildSupplementsPayload(supplements: MissingInfoItem[]) {
 }
 
 async function callGenerateDocumentation(body: GenerateRequest): Promise<GenerateResponse> {
-  const response = await fetch(FUNCTION_URL, {
+  const { url, anonKey } = requireSupabaseConfig();
+  const response = await fetch(`${url}${FUNCTION_PATH}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${anonKey}`,
     },
     body: JSON.stringify(body),
   });

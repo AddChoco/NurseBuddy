@@ -1,5 +1,5 @@
 import type { AssessmentField, MissingInfoCategory } from './types.ts';
-import { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS } from './guidelineRequirementConfigs.ts';
+import { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS } from './fallPlanConstants.ts';
 
 export type AssessmentType =
   | 'initial'

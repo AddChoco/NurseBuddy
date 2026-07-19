@@ -66,10 +66,9 @@ export {
   buildGuidelinePlanLibraryBlock,
   getGuidelinePlanLibraryEntry,
   validatePlanAgainstLibrary,
-  GUIDELINE_PLAN_LIBRARY,
   listGuidelinePlanLibraryIds,
 } from './guidelinePlanLibrary.ts';
-export type { GuidelinePlanLibraryEntry, GuidelinePlanLibraryDefinition } from './guidelinePlanLibrary.ts';
+export type { GuidelinePlanLibraryEntry } from './guidelinePlanLibrary.ts';
 
 export {
   GUIDELINE_DEFINITIONS,

@@ -1,5 +1,8 @@
-import type { GuidelineId } from '../types';
+import type { GuidelineId } from './types.ts';
 import type { AssessmentType } from './facilityTemplateMode.ts';
+import { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS } from './fallPlanConstants.ts';
+
+export { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS };
 
 export type AssessmentFieldKey =
   | 'eventTime'
@@ -70,9 +73,6 @@ export const HEAD_INJURY_INITIAL_CONFIG: GuidelineRequirementConfig = {
   guidelineNameInPlan: 'Head Injury Guideline',
   assessmentLabel: 'Head injury',
 };
-
-export const FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS =
-  'DSP/staff instructed to monitor for and immediately report pain, swelling, bruising, bleeding, change in neurological or mental status, nausea, vomiting, dizziness, weakness, difficulty with mobility, or any other change from baseline.';
 
 export const FALL_INITIAL_CONFIG: GuidelineRequirementConfig = {
   guidelineId: 'fall',
