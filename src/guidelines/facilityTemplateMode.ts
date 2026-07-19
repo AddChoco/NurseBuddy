@@ -1,4 +1,5 @@
 import type { AssessmentField, MissingInfoCategory } from './types';
+import { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS } from './guidelineRequirementConfigs';
 
 export type AssessmentType =
   | 'initial'
@@ -164,37 +165,158 @@ export function buildStaffEducationAutoCompleteBlock(
   }
 
   return `STAFF EDUCATION AUTO-COMPLETION (enabled by default):
-When nursing instructions, DSP monitoring instructions, or other staff education are documented in the Plan, you MAY automatically complete:
-${STAFF_EDUCATION_PROMPT}
-DSP verbalized understanding of the instructions provided.
+When automatic staff education is enabled, generate guideline-specific DSP monitoring instructions required by the selected guideline even if the nurse did not dictate them.
 
-Use this only when instructions were provided in the note. Do NOT use it when the narrative explicitly states staff did not verbalize understanding or education was not provided.`;
+1. Insert the guideline-appropriate DSP/staff monitoring instruction in the Plan before:
+${STAFF_EDUCATION_PROMPT}
+
+Example for Fall follow-up:
+${FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS}
+
+2. Do NOT automatically complete "${STAFF_EDUCATION_PROMPT}" unless the narrative explicitly confirms staff verbalized or demonstrated understanding.
+3. Leave the staff-understanding confirmation blank when not explicitly documented, and flag it for nurse review.
+
+Use guideline-specific symptoms and monitoring parameters from the selected guideline — not generic wording.`;
 }
 
-export function buildFacilityTemplatePlanRules(autoCompleteStaffEducation: boolean): string {
-  const staffEducationRule = autoCompleteStaffEducation
-    ? `- ${STAFF_EDUCATION_PROMPT} — may be auto-completed per STAFF EDUCATION AUTO-COMPLETION rules when nursing instructions are documented`
-    : `- ${STAFF_EDUCATION_PROMPT} — leave blank unless explicitly supported by the narrative`;
+export function buildRoutineNursingInterventionsBlock(): string {
+  return `ROUTINE NURSING INTERVENTIONS (under "Nursing interventions completed:"):
 
+If the nurse did not explicitly list interventions, you MAY document only routine nursing actions that clearly occurred based on the assessment context.
+
+Allowed examples when an assessment clearly occurred:
+- Resident assessed following reported emesis.
+- Respiratory assessment completed.
+- Abdominal assessment completed.
+- Intake and output reviewed.
+- Resident monitored for recurrent vomiting.
+
+Rules:
+- Infer only routine nursing assessments and monitoring actions implied by the documented event and guideline.
+- Do NOT invent medications, treatments, PRN administrations, provider orders, or specific clinical procedures not supported by the narrative.
+- Do NOT document PCP/LAR notification as completed unless the narrative confirms it.`;
+}
+
+export function buildSubjectiveCompletionRules(): string {
+  return `SUBJECTIVE COMPLETION RULES:
+
+Do NOT copy, translate sentence-by-sentence, or paste the nurse's raw dictated text into Subjective.
+
+Rewrite all reported information into professional EPSSLC nursing documentation while preserving only documented facts:
+- report time, reporter name/title, and what was reported when available
+- symptoms, events, and resident statements exactly as supported — never expanded beyond the input
+
+WRONG (raw dictation copied or translated literally):
+"이 사람이 아까 토했어..."
+
+CORRECT (professional nursing rewrite, same facts):
+"DSP reported that the resident experienced one episode of emesis after dinner at approximately 1630. DSP reported the resident ate rapidly prior to the episode. Emesis contained undigested food."
+
+Convert conversational, informal, or non-English input into the documentation style of an experienced Texas SSLC RN.`;
+}
+
+export function buildObjectiveCompletionRules(): string {
+  return `OBJECTIVE COMPLETION RULES:
+
+Keep every required template label on its own line. Preserve "See Interactive View Assessment." exactly.
+
+For narrative assessment fields — especially "Other relevant assessment findings:" and similar open-ended prompts:
+- Write professional nursing documentation, not key-value fragments or the word "unknown".
+- Synthesize ALL supported objective findings from the entire clinical input and supplements into complete nursing sentences.
+- Cross-reference the full narrative before leaving any field blank — if the information appears anywhere in the input, include it here.
+
+Example style:
+Respirations even and unlabored.
+No coughing observed.
+No signs of aspiration.
+Abdomen soft and non-tender.
+No additional change in condition.
+
+Never write "unknown" when the information exists elsewhere in the clinical input.
+Do not invent findings not supported by the narrative.`;
+}
+
+export function buildSbarCompletionRules(): string {
+  return `SBAR COMPLETION RULES (when SBAR is requested):
+
+Write like an experienced RN communicating with a provider — not a one-line summary.
+
+S — Situation:
+- Expand with supported event details: what happened, when, where, and key descriptors.
+- WRONG: "Resident experienced vomiting."
+- CORRECT: "Resident experienced one episode of emesis at approximately 1630 after dinner. Emesis contained undigested food."
+
+B — Background:
+- Include relevant supported history, medications, baseline context, and preceding events from the narrative.
+
+A — Assessment:
+- Expand with supported objective findings, assessment results, and completed nursing actions.
+- Include specific supported details — not generic summaries.
+
+R — Recommendation:
+- Use guideline-based, specific language.
+- Avoid vague phrases such as "Continue to monitor" without guideline-specific detail.
+- Do not claim provider notification occurred unless supported.`;
+}
+
+export function buildDocumentationStyleRules(): string {
+  return `DOCUMENTATION STYLE (Texas SSLC / EPSSLC):
+
+Write like an experienced RN in a Texas State Supported Living Center — not like generic AI output.
+
+Avoid:
+- Repetitive wording
+- Generic sentences such as "Continue to monitor" without specific guideline detail
+- AI-sounding phrasing, speculation, or unsupported conclusions
+- Phrases such as "It seems..." or "may have been related to..."
+
+Prefer specific, guideline-based nursing language drawn from the selected guideline and documented facts.`;
+}
+
+export function buildFacilityTemplateQualityRules(
+  autoCompleteStaffEducation: boolean,
+): string {
+  return `${buildDocumentationStyleRules()}
+
+${buildSubjectiveCompletionRules()}
+
+${buildObjectiveCompletionRules()}
+
+${buildRoutineNursingInterventionsBlock()}
+
+${buildStaffEducationAutoCompleteBlock(autoCompleteStaffEducation)}
+
+${buildSbarCompletionRules()}`;
+}
+
+export function buildFacilityPlanComplianceRules(): string {
+  return `FACILITY PLAN COMPLIANCE (mandatory):
+
+The Plan section must be assembled ONLY from:
+1. The PLAN section of the EXACT FILLABLE FACILITY TEMPLATE
+2. The FACILITY GUIDELINE PLAN LIBRARY predefined plan statements
+
+Rules:
+- Include every predefined plan statement in the same order shown in the template and plan library.
+- Preserve every standing instruction line ending with "." exactly as written — even when the action did not occur.
+- Fill colon-ended prompts only with information supported by the nurse narrative.
+- Do NOT generate generic plan text such as "Continue to monitor."
+- Do NOT invent medications, treatments, provider orders, or notifications.
+- Do NOT substitute AI-generated plan wording for predefined facility plan statements.
+- Select the correct predefined Plan for the selected guideline. Facility compliance takes priority over AI creativity.`;
+}
+
+export function buildFacilityTemplatePlanRules(_autoCompleteStaffEducation: boolean): string {
   return `PLAN PROMPT RULES IN FACILITY TEMPLATE MODE:
 
-The Plan must use the facility guideline template as the base. Preserve every standing facility instruction line exactly as written in the template. Only populate blank colon-ended prompts with supported information. Do not replace facility instructions with generic AI wording.
+The Plan must use the FACILITY GUIDELINE PLAN LIBRARY and EXACT FILLABLE FACILITY TEMPLATE as the only sources.
 
-1. Status / completion prompts — populate only when supported by the narrative:
-   - PIR completed:
-   - PCP notified:
-   - LAR notified:
-   - Nursing interventions completed:
-   ${staffEducationRule}
-
-2. Standing facility instruction statements — preserve these exactly on their own lines even when the action was not confirmed. Do not rewrite, shorten, or replace them:
-   - Continue temperature assessments according to the Elevated Temperature Guideline.
-   - Nurse to notify PCP of abnormal findings and complications.
-   - DSP instructed to monitor for and immediately report...
-   - Assess every shift for 24 hours after resident is symptom free.
-   - Notify the oncoming nurse through the 24-hour report or nurse-to-nurse report when continued follow-up is required.
-
-Standing instructions are facility requirements, not claims that the action already occurred.`;
+1. Include every predefined plan statement from the plan library in order.
+2. Preserve every standing facility instruction line exactly as written in the template.
+3. Fill colon-ended prompts only with supported user-provided information.
+4. Do not replace facility plan statements with generic AI wording.
+5. Standing instructions ending with "." are facility requirements — preserve them even when the action was not confirmed.
+6. Do not state PCP or LAR was notified unless the user confirms notification occurred.`;
 }
 
 export const FACILITY_TEMPLATE_COMPLETION_DIRECTIVE = `Complete the exact facility template. Template fidelity is the highest priority.
@@ -268,20 +390,22 @@ DSP verbalized understanding of the instructions provided.
 (Include only supported information from the current input. Leave any unsupported prompt label in place with no fabricated entry.)
 
 SUBJECTIVE (S:):
+- Do NOT copy or translate the raw dictated text. Rewrite into professional nursing documentation.
 - Subjective information is reported by the individual, DSP, staff, family, or another person.
 - When reported information is used, include when available: report time, reporter name, reporter title/role, and what was reported.
 - Preferred style: "At 08:37, John Jones, DSP, reported that the individual vomited in the living room."
 - Do not fabricate report time, reporter name, reporter title, direct quotes, or reported symptoms.
-- Use quotation marks only when the user clearly provides an exact quote; otherwise paraphrase accurately.
+- Use quotation marks only when the user clearly provides an exact quote; otherwise paraphrase accurately in professional nursing language.
 
 OBJECTIVE (O:):
 - Preserve exactly on its own line: See Interactive View Assessment.
 - Keep every required objective prompt label from the guideline visible even when blank.
-- After each objective prompt label, write professional EPSSLC nursing narrative — not short fragments or key-value pairs everywhere.
-- Prefer complete nursing sentences such as: "Abdomen soft and non-tender upon assessment. No pain reported during abdominal assessment. Respirations even and unlabored. No signs of aspiration or respiratory distress observed. Vital signs remain within normal limits."
-- WRONG objective style: "Abdominal soft to touch. No pain."
-- Add values only for findings supported by the narrative.
-- Never automatically add normal findings such as vital signs WNL, neuro unchanged, skin intact, breathing unlabored, no acute distress, stable, alert and oriented, or ambulating well unless explicitly provided.
+- After each objective prompt label, write professional EPSSLC nursing narrative — not short fragments, "unknown", or key-value pairs everywhere.
+- For "Other relevant assessment findings:" and similar narrative fields, synthesize all supported objective findings from the full clinical input.
+- Prefer complete nursing sentences such as: "Abdomen soft and non-tender upon assessment. No pain reported during abdominal assessment. Respirations even and unlabored. No signs of aspiration or respiratory distress observed."
+- WRONG objective style: "Abdominal soft to touch. No pain." or "unknown"
+- Add values only for findings supported by the narrative anywhere in the input.
+- Do not invent normal findings not supported by the narrative; do synthesize supported findings that appear elsewhere in the input.
 
 ASSESSMENT (A:):
 - Use the assessment wording/label from the selected facility template when defined.
@@ -290,12 +414,13 @@ ASSESSMENT (A:):
 - For Resolution assessment type, use "resolved" only when the user explicitly states the issue resolved.
 
 PLAN (P:):
-- Use the facility guideline template as the base.
+- Use ONLY the FACILITY GUIDELINE PLAN LIBRARY and EXACT FILLABLE FACILITY TEMPLATE Plan section.
+- Include every predefined plan statement in the same order.
 - Preserve every standing facility instruction line exactly as written in the template.
-- List each facility Plan prompt from the guideline in the same order, each on its own line.
 - Fill colon-ended prompts only with supported user-provided information.
-- Do not replace facility instructions with generic AI wording such as "Continue to monitor" when the template already provides specific standing instructions.
+- Do not replace facility plan statements with generic AI wording such as "Continue to monitor."
 - Preserve facility instruction statements ending with "." even when the action was not confirmed.
-- Do not state PCP was notified unless the user confirms notification occurred.`;
+- Do not state PCP was notified unless the user confirms notification occurred.
+- Do NOT invent medications or treatments.`;
 
 export const FACILITY_TEMPLATE_PLAN_RULES = buildFacilityTemplatePlanRules(true);

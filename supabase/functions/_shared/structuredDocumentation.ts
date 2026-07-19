@@ -6,7 +6,7 @@ import {
   FACILITY_TEMPLATE_COMPLETION_DIRECTIVE,
   FACILITY_TEMPLATE_MODE_INSTRUCTIONS,
   buildFacilityTemplatePlanRules,
-  buildStaffEducationAutoCompleteBlock,
+  buildFacilityPlanComplianceRules,
   isFacilityTemplateMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
@@ -19,6 +19,12 @@ import {
 import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
 import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
 import { validatePlanAgainstLibrary } from './guidelines/guidelinePlanLibrary.ts';
+import {
+  enrichFacilityPlanPrompts,
+  planDocumentsNursingInterventions,
+  planDocumentsPirCompleted,
+  type PlanEnrichmentResult,
+} from './guidelines/planPromptEnrichment.ts';
 import {
   extractColonPromptsFromTemplate,
   getFacilityFormTemplate,
@@ -367,19 +373,22 @@ ${FACILITY_TEMPLATE_COMPLETION_DIRECTIVE}
 
 ${buildFacilityTemplatePlanRules(resolvedTemplateOptions.autoCompleteStaffEducation)}
 
-${buildStaffEducationAutoCompleteBlock(resolvedTemplateOptions.autoCompleteStaffEducation)}
+${buildFacilityPlanComplianceRules()}
 
 AUTHORITATIVE FRAMEWORK:
-The EXACT FILLABLE FACILITY TEMPLATE below is the authoritative structure for the SOAP JSON fields. Template fidelity is the highest priority.`
+The EXACT FILLABLE FACILITY TEMPLATE below is the authoritative structure for the SOAP JSON fields.
+The FACILITY GUIDELINE PLAN LIBRARY defines every predefined Plan statement for the selected guideline.
+Template fidelity and facility Plan compliance are the highest priorities.`
     : `AUTHORITATIVE FRAMEWORK:
 The selected guideline template below is the authoritative framework for the note. Apply its required assessments, notification requirements, and follow-up requirements.`;
 
-  const prohibitedCompletedFindings = facilityTemplateMode && resolvedTemplateOptions.autoCompleteStaffEducation
+  const prohibitedCompletedFindings = facilityTemplateMode
     ? `- Vital signs were stable / within normal limits
 - No visible injury was noted
 - Neurological or mental status unchanged
 - Range of motion intact
-- Provider or LAR was notified`
+- Provider or LAR was notified
+- Staff verbalized understanding`
     : `- Vital signs were stable / within normal limits
 - No visible injury was noted
 - Neurological or mental status unchanged
@@ -387,7 +396,27 @@ The selected guideline template below is the authoritative framework for the not
 - Provider or LAR was notified
 - Staff verbalized understanding`;
 
-  const accuracyBlock = `ACCURACY — COMPLETED FINDINGS ONLY:
+  const accuracyBlock = facilityTemplateMode
+    ? `ACCURACY AND FACT PRESERVATION:
+You MUST NOT invent medications, treatments, provider orders, or notifications that conflict with documented information.
+
+ALLOWED auto-completion when standard for the selected guideline:
+- Routine nursing assessments clearly implied by the documented event (respiratory assessment, abdominal assessment, resident assessed following reported event, intake/output review, monitoring for recurrence)
+- Guideline-specific DSP/staff monitoring instructions when automatic staff education is enabled
+
+PROHIBITED invented completed findings (unless explicitly in the narrative):
+${prohibitedCompletedFindings}
+
+PRESERVATION:
+Preserve every clinically relevant fact from the nurse narrative and supplements, including times, reporter identity or title, symptoms, assessment findings, completed interventions, and notification status.
+
+Rewrite Subjective into professional nursing language — do not copy raw dictation.
+
+When required assessment information is not supplied anywhere in the input:
+- do not fabricate a result
+- keep the facility prompt visible and leave the value blank
+- list the specific missing item in qualityCheck.missing`
+    : `ACCURACY — COMPLETED FINDINGS ONLY:
 You MUST NOT invent completed assessments, observed findings, patient responses, notifications, or interventions that are not supported by the narrative.
 
 PROHIBITED invented completed findings (unless explicitly in the narrative):
@@ -398,11 +427,11 @@ Preserve every clinically relevant fact supplied by the nurse, including times, 
 
 When required assessment information is not supplied:
 - do not fabricate a result
-- ${facilityTemplateMode ? 'keep the facility prompt visible and leave the value blank' : 'omit the unsupported finding from the medical note'}
+- omit the unsupported finding from the medical note
 - list the specific missing item in qualityCheck.missing`;
 
   const styleBlock = facilityTemplateMode
-    ? `\nUse professional EPSSLC nursing narrative inside prompt values — especially in Objective — while preserving every facility prompt label on its own line. Do not merge prompts. Do not remove prompt labels.\n`
+    ? `\nWrite like an experienced Texas SSLC RN. Use professional EPSSLC nursing narrative inside prompt values — especially in Objective and Subjective — while preserving every facility prompt label on its own line. Do not merge prompts. Do not remove prompt labels. Avoid generic AI phrasing.\n`
     : `\nWrite natural, professional nursing documentation rather than mechanically restating the input. The note should read like documentation written by a skilled nurse, with comparable clinical completeness to the guideline template.\n`;
 
   const supplementalRules = facilityTemplateMode ? '' : `\n${buildPlanSectionRulesBlock()}\n`;
@@ -412,7 +441,7 @@ When required assessment information is not supplied:
       subjective: 'SUBJECTIVE section of the fillable facility template; preserve every prompt label on its own line; use professional nursing language in values',
       objective: 'OBJECTIVE section of the fillable facility template; preserve every prompt label and "See Interactive View Assessment."; write professional nursing narrative after each prompt label; never merge prompts; leave unsupported prompts blank',
       assessment: 'ASSESSMENT section label/content from the fillable facility template only',
-      plan: 'PLAN section of the fillable facility template; preserve every standing facility instruction exactly; fill blank prompts only with supported information; do not replace facility instructions with generic AI wording',
+      plan: 'PLAN section assembled ONLY from the FACILITY GUIDELINE PLAN LIBRARY and EXACT FILLABLE FACILITY TEMPLATE; preserve every predefined plan statement in order; fill colon prompts only with supported information; never substitute generic AI plan wording',
     }
     : {
       subjective: 'Complete subjective section using provided facts and guideline expectations',
@@ -447,10 +476,10 @@ JSON SCHEMA:
     "plan": "${soapSchema.plan}"
   }${includeSbar ? `,
   "sbar": {
-    "situation": "Concise supported summary of the event",
+    "situation": "${facilityTemplateMode ? 'Expanded supported event summary with time, event details, and key descriptors — write like an RN notifying a provider' : 'Concise supported summary of the event'}",
     "background": "Relevant supported background including medications and context when provided",
-    "assessment": "Supported findings and completed interventions only",
-    "recommendation": "${facilityTemplateMode ? 'Guideline-based recommendations using prospective language; do not claim unsupported completed notifications' : 'Category B prospective guideline recommendations, monitoring instructions, and follow-up actions; do not claim unsupported completed notifications'}"
+    "assessment": "${facilityTemplateMode ? 'Expanded supported objective findings, assessment results, and completed nursing actions — not a one-line summary' : 'Supported findings and completed interventions only'}",
+    "recommendation": "${facilityTemplateMode ? 'Guideline-based specific recommendations using prospective language; avoid vague Continue to monitor wording; do not claim unsupported completed notifications' : 'Category B prospective guideline recommendations, monitoring instructions, and follow-up actions; do not claim unsupported completed notifications'}"
   }` : ""},
   "qualityCheck": {
     "provided": ["List each fact explicitly supported by the narrative"],
@@ -472,7 +501,9 @@ export function buildPass1GenerationUserPrompt(
     ? `Complete the EXACT FILLABLE FACILITY TEMPLATE from the system instructions.
 Preserve every facility prompt label, standalone instruction, and prompt order in the SOAP JSON fields.
 Never merge separate facility prompts into one line.
+Rewrite Subjective into professional nursing documentation — do not copy raw dictated text.
 Write professional nursing narrative after each prompt label — especially in Objective — while keeping every prompt visible.
+Synthesize supported objective findings from the full input; never write "unknown" when the information exists elsewhere.
 Fill supported values after each prompt. Leave unsupported colon prompts visible with blank values.`
     : `Use the full facility guideline template and FACILITY GUIDELINE PLAN LIBRARY from the system instructions as the authoritative framework.
 Write Subjective, Objective, and Assessment naturally from the nurse narrative.
@@ -481,7 +512,7 @@ Assemble the Plan from the plan library: Category A from narrative facts; Catego
   return `Generate the complete structured documentation JSON.
 
 ${frameworkLine}
-Use the nurse narrative below exactly as the source of documented facts. Do not summarize away details from the narrative.
+Use the nurse narrative below as the sole source of documented facts. Rewrite into professional nursing documentation — do not copy or translate the raw text verbatim.
 
 NURSE NARRATIVE (preserve all clinically relevant facts):
 ${clinicalInfo}
@@ -509,9 +540,13 @@ export function buildPass2ReviewInstructions(
 - Do not delete blank required prompts
 - Leave unsupported colon prompts visible with blank values
 - Preserve every standing facility Plan instruction exactly as written in the template
-- Use professional nursing narrative inside prompt values, especially in Objective, while keeping prompt labels visible
+- Rewrite Subjective into professional nursing language — do not leave raw dictation
+- Use professional nursing narrative inside prompt values, especially in Objective; synthesize supported findings from the full input; never write "unknown" when information exists elsewhere
+- Infer only routine nursing assessments under Nursing interventions completed when clearly implied
+- Auto-complete routine DSP staff education when enabled
+- Expand SBAR Situation and Assessment with supported detail — avoid one-line summaries
 - Do not convert the SOAP sections into unstructured narrative paragraphs without prompt labels
-- Only correct omissions, contradictions, merged prompts, invented completed findings, or unsupported content`
+- Only correct omissions, contradictions, merged prompts, invented medications/treatments, invented completed notifications, or unsupported content`
     : `Fix omissions, contradictions, invented completed findings, and incomplete Plan/SBAR content.
 Keep natural professional nursing language.
 Do not shorten the note unnecessarily.
@@ -573,12 +608,40 @@ ${args.validationErrors.map((error) => `- ${error}`).join("\n")}
 Return corrected JSON only.${args.includeSbar ? " Include sbar." : " Omit sbar."}`;
 }
 
-function planDocumentsCompletedAction(plan: string, action: 'pir' | 'nursing interventions'): boolean {
-  const lower = plan.toLowerCase();
+function planDocumentsCompletedAction(
+  plan: string,
+  action: 'pir' | 'nursing interventions',
+  def?: GuidelineDefinition,
+  assessmentType?: AssessmentType,
+): boolean {
   if (action === 'pir') {
+    if (planDocumentsPirCompleted(plan, def, assessmentType)) return true;
+    const lower = plan.toLowerCase();
     return /\bpir\b/.test(lower) && /completed/.test(lower);
   }
+  if (planDocumentsNursingInterventions(plan, def, assessmentType)) return true;
+  const lower = plan.toLowerCase();
   return /nursing interventions/.test(lower) && /completed/.test(lower);
+}
+
+export function applyFacilityPlanEnrichment(
+  parsed: StructuredDocumentationResponse,
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  templateOptions?: FacilityTemplateOptions,
+): PlanEnrichmentResult | null {
+  const resolvedTemplateOptions = resolveFacilityTemplateOptions(templateOptions);
+  const enrichment = enrichFacilityPlanPrompts(
+    parsed.soap.plan,
+    input,
+    def,
+    assessmentType,
+    { autoCompleteStaffEducation: resolvedTemplateOptions.autoCompleteStaffEducation },
+  );
+
+  parsed.soap.plan = enrichment.plan;
+  return enrichment;
 }
 
 function detectInventedFindings(text: string, input: string): string[] {
@@ -595,6 +658,7 @@ function reconcileQualityCheckCompleteness(
   parsed: StructuredDocumentationResponse,
   input: string,
   def: GuidelineDefinition,
+  enrichment?: PlanEnrichmentResult | null,
 ): StructuredQualityCheckCompleteness {
   const facts = extractClinicalFacts(input, def.id);
   const provided = [...(parsed.qualityCheckCompleteness?.provided ?? [])];
@@ -610,6 +674,16 @@ function reconcileQualityCheckCompleteness(
     }
   };
 
+  const ensureMissing = (label: string, condition: boolean) => {
+    if (!condition) return;
+    if (!missing.some((item) => item.toLowerCase().includes(label.toLowerCase()))) {
+      missing.push(label);
+    }
+    for (let i = provided.length - 1; i >= 0; i--) {
+      if (provided[i].toLowerCase().includes(label.toLowerCase())) provided.splice(i, 1);
+    }
+  };
+
   if (facts.eventTime) ensureProvided(`Event time: ${facts.eventTime}`, true);
   if (facts.reporterTitle) ensureProvided(`Reporter title: ${facts.reporterTitle}`, true);
   if (facts.reporterName) ensureProvided(`Reporter name: ${facts.reporterName}`, true);
@@ -620,7 +694,17 @@ function reconcileQualityCheckCompleteness(
   if (facts.medications.length > 0) ensureProvided(`${facts.medications.join(", ")} use`, true);
   if (facts.pupilAssessment) ensureProvided(facts.pupilAssessment, true);
   if (facts.pirCompleted) ensureProvided("PIR completed", true);
-  if (facts.nursingInterventionsCompleted) ensureProvided("Nursing interventions completed", true);
+  if (facts.nursingInterventionsCompleted || enrichment?.nursingInterventionsSummary) {
+    ensureProvided("Nursing interventions completed", true);
+  }
+  if (enrichment?.staffEducationGenerated) {
+    ensureProvided("Staff education instructions generated", true);
+  }
+  if (enrichment?.staffUnderstandingConfirmed) {
+    ensureProvided("Staff verbalized or demonstrated understanding", true);
+  } else if (enrichment?.staffEducationGenerated || (enrichment?.reviewWarnings.length ?? 0) > 0) {
+    ensureMissing('Confirm whether DSP verbalized or demonstrated understanding.', true);
+  }
 
   return { provided, missing };
 }
@@ -727,7 +811,13 @@ export function validateAiDocumentationOutput(
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
   outputMode: DocumentationOutputMode = DEFAULT_DOCUMENTATION_OUTPUT_MODE,
+  templateOptions?: FacilityTemplateOptions,
 ): AiValidationResult {
+  let enrichment: PlanEnrichmentResult | null = null;
+  if (isFacilityTemplateMode(outputMode)) {
+    enrichment = applyFacilityPlanEnrichment(parsed, input, def, assessmentType, templateOptions);
+  }
+
   const errors: string[] = [];
   const combinedOutput = [
     parsed.soap.subjective,
@@ -755,25 +845,22 @@ export function validateAiDocumentationOutput(
     }
   }
 
-  if (facts.pirCompleted && !planDocumentsCompletedAction(parsed.soap.plan, 'pir')) {
+  if (facts.pirCompleted && !planDocumentsCompletedAction(parsed.soap.plan, 'pir', def, assessmentType)) {
     errors.push('Supplied PIR completed status is missing from the Plan');
   }
 
-  if (facts.nursingInterventionsCompleted && !planDocumentsCompletedAction(parsed.soap.plan, 'nursing interventions')) {
+  if (facts.nursingInterventionsCompleted && !planDocumentsCompletedAction(parsed.soap.plan, 'nursing interventions', def, assessmentType)) {
     errors.push('Supplied nursing interventions completed status is missing from the Plan');
   }
 
   errors.push(...detectInventedFindings(combinedOutput, input));
 
-  if (!isFacilityTemplateMode(outputMode)) {
-    errors.push(...validatePlanAgainstLibrary(parsed.soap.plan, def.id, assessmentType));
-  }
-
   if (isFacilityTemplateMode(outputMode)) {
+    errors.push(...validatePlanAgainstLibrary(parsed.soap.plan, def.id, assessmentType));
     errors.push(...validateFacilityTemplatePreservation(parsed.soap, def, assessmentType));
   }
 
-  const completeness = reconcileQualityCheckCompleteness(parsed, input, def);
+  const completeness = reconcileQualityCheckCompleteness(parsed, input, def, enrichment);
 
   for (const missingItem of completeness.missing) {
     if (facts.eventTime && /report time|event time/i.test(missingItem)) {

@@ -88,9 +88,7 @@ export function buildCompleteGuidelineTemplateBlock(
   const fillableTemplateBlock = facilityTemplateMode
     ? `\n${buildFillableTemplateBlock(def, assessmentType)}\n`
     : '';
-  const planLibraryBlock = facilityTemplateMode
-    ? ''
-    : `\n${buildGuidelinePlanLibraryBlock(def, assessmentType)}`;
+  const planLibraryBlock = `\n${buildGuidelinePlanLibraryBlock(def, assessmentType)}`;
 
   return `COMPLETE SELECTED FACILITY GUIDELINE TEMPLATE
 Guideline: ${def.displayName}
@@ -265,6 +263,7 @@ export async function generateAiDocumentationBundle(
     context.def,
     context.assessmentType,
     context.outputMode,
+    context.templateOptions,
   );
 
   if (!finalValidation.isValid) {
@@ -296,6 +295,7 @@ export async function generateAiDocumentationBundle(
       context.def,
       context.assessmentType,
       context.outputMode,
+      context.templateOptions,
     );
 
     if (!finalValidation.isValid && isFacilityTemplateMode(context.outputMode)) {

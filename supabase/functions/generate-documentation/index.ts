@@ -124,6 +124,8 @@ B — Background:
 A — Assessment:
 R — Recommendation:
 
+Write like an experienced RN communicating with a provider — not a one-line summary.
+
 Use ONLY information confirmed in the current user input. Never invent:
 - provider orders
 - provider recommendations
@@ -132,15 +134,19 @@ Use ONLY information confirmed in the current user input. Never invent:
 - notifications that did not occur
 
 S — Situation:
-- State the immediate reason for contacting the provider, tied to the selected guideline, using only supported facts.
+- Expand with supported event details: what happened, when, and key descriptors.
+- WRONG: "Resident experienced vomiting."
+- CORRECT: "Resident experienced one episode of emesis at approximately 1630 after dinner. Emesis contained undigested food."
 
 B — Background:
 - Include relevant history, recent events, guideline context, medication information, or preceding symptoms only when provided.
 
 A — Assessment:
-- Include current vital signs, symptoms, objective findings, nursing assessment, interventions, and response only when provided.
+- Expand with supported vital signs, symptoms, objective findings, nursing assessment, interventions, and response.
+- Include specific supported details — not generic summaries.
 
 R — Recommendation:
+- Use guideline-specific language. Avoid vague "Continue to monitor" without specific detail.
 - If provider notification IS clinically indicated based on the documented information, request provider evaluation using safe wording such as:
   "Requesting provider evaluation and further orders."
   or
@@ -152,24 +158,29 @@ R — Recommendation:
 
   [LAR_EMAIL_LABEL]: `OUTPUT FORMAT: LAR Email (Legally Authorized Representative)
 
-Write a short, family-friendly email in plain language using only supported facts from the current input.
+Write a short, family-friendly email in plain language using ONLY documented facts from the current input.
+
+DOCUMENTATION RULES:
+- State only what was reported or observed — never speculate or infer causes.
+- WRONG: "It seems the vomiting may have been related to eating quickly."
+- CORRECT: "DSP reported that the resident ate rapidly prior to the vomiting episode."
 
 Include ONLY when provided in the input:
-- reason for notification
-- current condition
-- nursing assessment
-- nursing interventions
+- reason for communication
+- current condition and supported assessment findings
+- nursing interventions actually documented
 - provider communication (only if it occurred)
 - follow-up plan (only if provided)
 
 Never invent:
-- provider orders
+- provider orders or recommendations
 - LAR notification events
 - future appointments
-- medications
-- education
-- follow-up plans
+- medications or treatments
+- education not documented
+- unsupported conclusions or causal explanations
 
+Do not use speculative language ("it seems", "may have been", "possibly related to", "appears to be").
 Do not fabricate provider communication or orders.
 Do not assume the LAR was notified unless reported.
 Use a warm, professional tone with a simple greeting and closing.`,

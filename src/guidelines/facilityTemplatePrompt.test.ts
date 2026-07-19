@@ -45,7 +45,8 @@ describe('facility template prompt assembly', () => {
     expect(instructions).toContain(FACILITY_TEMPLATE_MODE_INSTRUCTIONS.slice(0, 40));
     expect(instructions).toContain('Complete the exact facility template');
     expect(instructions).toContain('NEVER MERGE TEMPLATE PROMPTS');
-    expect(instructions).toContain('STAFF EDUCATION AUTO-COMPLETION');
+    expect(instructions).toContain('FACILITY PLAN COMPLIANCE');
+    expect(instructions).toContain('FACILITY GUIDELINE PLAN LIBRARY');
     expect(instructions).not.toContain('Write natural, professional nursing documentation rather than mechanically restating the input.');
   });
 

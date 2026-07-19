@@ -41,18 +41,19 @@ describe('formatFacilityForm', () => {
     expect(output).toMatch(/Staff verbalized or demonstrated understanding of instructions provided:\nDSP instructed to report pain or swelling\./);
   });
 
-  it('preserves generic S/O/A/P order and blank prompts', () => {
+  it('preserves generic facility template order and blank prompts', () => {
     const template = getFacilityFormTemplate(GENERIC_SOAP_NOTE_GUIDELINE, 'other');
     const output = formatFacilityForm(template, EMPTY_CLINICAL_EXTRACTION);
 
-    const sIndex = output.indexOf('S:');
-    const oIndex = output.indexOf('O:');
-    const aIndex = output.indexOf('A:');
-    const pIndex = output.indexOf('P:');
-    expect(sIndex).toBeLessThan(oIndex);
-    expect(oIndex).toBeLessThan(aIndex);
-    expect(aIndex).toBeLessThan(pIndex);
-    expect(output).toMatch(/Assessed at:/);
+    const subjectiveIndex = output.indexOf('SUBJECTIVE:');
+    const objectiveIndex = output.indexOf('OBJECTIVE:');
+    const assessmentIndex = output.indexOf('ASSESSMENT:');
+    const planIndex = output.indexOf('PLAN:');
+    expect(subjectiveIndex).toBeLessThan(objectiveIndex);
+    expect(objectiveIndex).toBeLessThan(assessmentIndex);
+    expect(assessmentIndex).toBeLessThan(planIndex);
+    expect(output).toMatch(/See Interactive View Assessment\./);
     expect(output).toMatch(/Additional findings:/);
+    expect(output).toMatch(/Nursing interventions completed:/);
   });
 });

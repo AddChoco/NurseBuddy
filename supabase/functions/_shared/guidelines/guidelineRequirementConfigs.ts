@@ -1,4 +1,4 @@
-import type { GuidelineId } from './types.ts';
+import type { GuidelineId } from '../types';
 import type { AssessmentType } from './facilityTemplateMode.ts';
 
 export type AssessmentFieldKey =
@@ -71,6 +71,9 @@ export const HEAD_INJURY_INITIAL_CONFIG: GuidelineRequirementConfig = {
   assessmentLabel: 'Head injury',
 };
 
+export const FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS =
+  'DSP/staff instructed to monitor for and immediately report pain, swelling, bruising, bleeding, change in neurological or mental status, nausea, vomiting, dizziness, weakness, difficulty with mobility, or any other change from baseline.';
+
 export const FALL_INITIAL_CONFIG: GuidelineRequirementConfig = {
   guidelineId: 'fall',
   assessmentTypes: ['initial', 'other'],
@@ -99,9 +102,37 @@ export const FALL_INITIAL_CONFIG: GuidelineRequirementConfig = {
   assessmentLabel: 'Unwitnessed fall',
 };
 
+export const FALL_FOLLOW_UP_CONFIG: GuidelineRequirementConfig = {
+  guidelineId: 'fall',
+  assessmentTypes: ['follow_up', 'resolution'],
+  requiredAssessmentFields: [
+    'eventTime',
+    'reporterTitle',
+    'mechanism',
+    'painAssessment',
+    'visibleInjury',
+    'vitalSigns',
+    'neurologicalAssessment',
+    'anticoagulantOrAntiplateletUse',
+    'providerNotification',
+    'nursingInterventionStatus',
+    'staffEducation',
+  ],
+  requiredPlanElements: [
+    'nursing intervention status',
+    'staff monitoring instructions',
+    'provider notification status',
+  ],
+  staffMonitoringInstructions: FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS,
+  monitoringScheduleFallback: 'Continue assessment each shift for the required 24-hour period.',
+  guidelineNameInPlan: 'Fall or Suspected Fall Guideline',
+  assessmentLabel: 'Fall or Suspected Fall follow-up status.',
+};
+
 const CONFIGS: GuidelineRequirementConfig[] = [
   HEAD_INJURY_INITIAL_CONFIG,
   FALL_INITIAL_CONFIG,
+  FALL_FOLLOW_UP_CONFIG,
 ];
 
 export function getGuidelineRequirementConfig(

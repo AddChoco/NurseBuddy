@@ -1,4 +1,4 @@
-import type { GuidelineId } from './types.ts';
+import type { GuidelineId } from '../types';
 
 /**
  * Structured clinical facts extracted deterministically from nurse input.
@@ -227,11 +227,43 @@ function extractLarNotification(input: string): string | null {
   return null;
 }
 
+const NURSING_INTERVENTIONS_COMPLETED_PATTERNS = [
+  /\bnursing interventions completed\b/i,
+  /\bnursing interventions were completed\b/i,
+  /\binterventions completed\b/i,
+  /간호\s*중재\s*완료/i,
+  /(?:널싱|nursing)\s*인터벤션\s*완료/i,
+  /\bnursing intervention(?:s)?\s+(?:completed|했음|완료)\b/i,
+];
+
+const STAFF_UNDERSTANDING_CONFIRMED_PATTERNS = [
+  /\bstaff verbalized\b/i,
+  /\bstaff demonstrated\b/i,
+  /\bdsp verbalized\b/i,
+  /\bstaff verbalized understanding\b/i,
+  /직원이\s*이해(?:했다|함)/i,
+  /직원(?:이|은)\s*.*이해(?:했다|함)/i,
+];
+
+export function detectNursingInterventionsCompleted(input: string): boolean {
+  return NURSING_INTERVENTIONS_COMPLETED_PATTERNS.some((pattern) => pattern.test(input));
+}
+
+export function detectStaffUnderstandingConfirmed(input: string): boolean {
+  return STAFF_UNDERSTANDING_CONFIRMED_PATTERNS.some((pattern) => pattern.test(input));
+}
+
 function extractStaffEducation(input: string): string | null {
   const match = input.match(
     /\bstaff (?:verbalized|demonstrated)[^.,]*|(?:staff|dsp)[^.,]*understanding[^.,]*/i,
   );
-  return match ? normalizeWhitespace(match[0]) : null;
+  if (match) return normalizeWhitespace(match[0]);
+
+  if (/직원에게\s*교육(?:함|했)/i.test(input) || /dsp(?:에게|한테)\s*.*(?:설명|교육)(?:함|했)/i.test(input)) {
+    return 'Staff education provided';
+  }
+
+  return null;
 }
 
 function extractLocation(input: string): string | null {
@@ -290,9 +322,7 @@ export function extractClinicalFacts(input: string, guidelineId?: GuidelineId): 
     neurologicalAssessment: extractNeurologicalAssessment(text),
     visibleInjury: extractVisibleInjury(text),
     pirCompleted: /\bpir completed\b/i.test(text) ? true : /\bpir\b/i.test(text) ? null : null,
-    nursingInterventionsCompleted: /\bnursing interventions completed\b/i.test(text)
-      ? true
-      : null,
+    nursingInterventionsCompleted: detectNursingInterventionsCompleted(text) ? true : null,
     providerNotification: extractProviderNotification(text),
     larNotification: extractLarNotification(text),
     staffEducation: extractStaffEducation(text),
