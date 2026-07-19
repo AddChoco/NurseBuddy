@@ -10,8 +10,11 @@ import type {
 import { GUIDELINES, SOAP_OUTPUT_LABEL, getOptionalOutputLabel } from '../constants';
 import { stripMarkdown } from './structuredDocumentation';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const DEFAULT_SUPABASE_URL = 'https://rsdcrgzejnaotpeeauep.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_ISpr5Ztcdx_5kcnGcnaRlA_CISIDfX4';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || DEFAULT_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || DEFAULT_SUPABASE_ANON_KEY;
 
 function requireSupabaseConfig(): { url: string; anonKey: string } {
   if (!SUPABASE_URL?.trim() || !SUPABASE_ANON_KEY?.trim()) {
