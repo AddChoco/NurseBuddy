@@ -1,6 +1,6 @@
-import type { GuidelineDefinition } from '../guidelines/types';
-import { detectAssessmentType, type AssessmentType } from '../guidelines/facilityTemplateMode';
-import type { DocumentationOutputMode } from '../guidelines/facilityTemplateMode';
+﻿import type { GuidelineDefinition } from './guidelines/types.ts';
+import { detectAssessmentType, type AssessmentType } from './guidelines/facilityTemplateMode.ts';
+import type { DocumentationOutputMode } from './guidelines/facilityTemplateMode.ts';
 import {
   DEFAULT_DOCUMENTATION_OUTPUT_MODE,
   FACILITY_TEMPLATE_COMPLETION_DIRECTIVE,
@@ -10,39 +10,39 @@ import {
   isFacilityTemplateMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
-} from '../guidelines/facilityTemplateMode';
+} from './guidelines/facilityTemplateMode.ts';
 import {
   buildGuidelineContextBlock,
   getAssessmentInstructionsForType,
   getDocumentationTypeInstructions,
-} from '../guidelines/guidelineEngine';
-import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
-import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
-import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from '../guidelines/eventTimeParsing';
-import { validatePlanAgainstLibrary } from '../guidelines/guidelinePlanLibrary';
+} from './guidelines/guidelineEngine.ts';
+import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
+import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
+import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from './guidelines/eventTimeParsing.ts';
+import { validatePlanAgainstLibrary } from './guidelines/guidelinePlanLibrary.ts';
 import {
   enrichFacilityPlanPrompts,
   planDocumentsNursingInterventions,
   planDocumentsPirCompleted,
   type PlanEnrichmentResult,
-} from '../guidelines/planPromptEnrichment';
+} from './guidelines/planPromptEnrichment.ts';
 import {
   enrichFacilitySoapSections,
   extractSubjectivePromptsFromTemplate,
   subjectivePromptHasValue,
-} from '../guidelines/soapSectionEnrichment';
+} from './guidelines/soapSectionEnrichment.ts';
 import {
   extractColonPromptsFromTemplate,
   getFacilityFormTemplate,
-} from '../guidelines/facilityFormTemplates';
-import { buildDocumentationQualityCheck } from '../guidelines/documentationQualityCheck';
+} from './guidelines/facilityFormTemplates.ts';
+import { buildDocumentationQualityCheck } from './guidelines/documentationQualityCheck.ts';
 import {
   buildNegativeFillerProhibitionBlock,
   buildValidationScanText,
   detectNegativeFillerClaims,
   sanitizeFacilityTemplateSections,
-} from '../guidelines/facilityTemplateSanitization';
-import type { TemplateLockSchema, TemplateLockValues } from '../guidelines/templateLockMode';
+} from './guidelines/facilityTemplateSanitization.ts';
+import type { TemplateLockSchema, TemplateLockValues } from './guidelines/templateLockMode.ts';
 
 export interface StructuredSoap {
   subjective: string;
@@ -344,11 +344,11 @@ function ensureNonEmptySections(soap: StructuredSoap, sbar?: StructuredSbar | nu
 }
 
 export function buildPlanSectionRulesBlock(): string {
-  return `PLAN SECTION RULES (mandatory — applies to SOAP Plan and SBAR Recommendation):
+  return `PLAN SECTION RULES (mandatory ΓÇö applies to SOAP Plan and SBAR Recommendation):
 
 The Plan has two distinct categories. Never treat Category B as invented findings.
 
-CATEGORY A — COMPLETED OBSERVATIONS AND INTERVENTIONS (narrative-only):
+CATEGORY A ΓÇö COMPLETED OBSERVATIONS AND INTERVENTIONS (narrative-only):
 Include ONLY when explicitly supported by the nurse narrative or supplements:
 - Assessment results and observed findings
 - Completed nursing interventions and actions taken
@@ -358,8 +358,8 @@ Include ONLY when explicitly supported by the nurse narrative or supplements:
 
 If a Category A item was not reported, do NOT document it as completed. List absent clinically relevant items in qualityCheck.missing.
 
-CATEGORY B — PROSPECTIVE NURSING PLANS (guideline-mandatory):
-Include ALL routine nursing plans, monitoring instructions, staff education, reassessment schedules, safety precautions, follow-up requirements, and handoff guidance required by the selected facility guideline — even when the nurse did not write them in the narrative.
+CATEGORY B ΓÇö PROSPECTIVE NURSING PLANS (guideline-mandatory):
+Include ALL routine nursing plans, monitoring instructions, staff education, reassessment schedules, safety precautions, follow-up requirements, and handoff guidance required by the selected facility guideline ΓÇö even when the nurse did not write them in the narrative.
 
 Category B items are forward-looking orders and instructions. Phrase them prospectively, for example:
 - "DSP/staff instructed to monitor [relevant symptoms] and immediately report [worsening signs]..."
@@ -438,7 +438,7 @@ ${prohibitedCompletedFindings}
 PRESERVATION:
 Preserve every clinically relevant fact from the nurse narrative and supplements, including times, reporter identity or title, symptoms, assessment findings, completed interventions, and notification status.
 
-Rewrite Subjective into professional nursing language — do not copy raw dictation.
+Rewrite Subjective into professional nursing language ΓÇö do not copy raw dictation.
 
 When required assessment information is not supplied anywhere in the input:
 - do not fabricate a result
@@ -447,7 +447,7 @@ When required assessment information is not supplied anywhere in the input:
 - never write "not provided", "unknown", "unable to determine", or similar negative filler in the note
 
 ${buildNegativeFillerProhibitionBlock()}`
-    : `ACCURACY — COMPLETED FINDINGS ONLY:
+    : `ACCURACY ΓÇö COMPLETED FINDINGS ONLY:
 You MUST NOT invent completed assessments, observed findings, patient responses, notifications, or interventions that are not supported by the narrative.
 
 PROHIBITED invented completed findings (unless explicitly in the narrative):
@@ -462,7 +462,7 @@ When required assessment information is not supplied:
 - list the specific missing item in qualityCheck.missing`;
 
   const styleBlock = facilityTemplateMode
-    ? `\nWrite like an experienced Texas SSLC RN. Use professional EPSSLC nursing narrative inside prompt values — especially in Objective and Subjective — while preserving every facility prompt label on its own line. Do not merge prompts. Do not remove prompt labels. Avoid generic AI phrasing.\n`
+    ? `\nWrite like an experienced Texas SSLC RN. Use professional EPSSLC nursing narrative inside prompt values ΓÇö especially in Objective and Subjective ΓÇö while preserving every facility prompt label on its own line. Do not merge prompts. Do not remove prompt labels. Avoid generic AI phrasing.\n`
     : `\nWrite natural, professional nursing documentation rather than mechanically restating the input. The note should read like documentation written by a skilled nurse, with comparable clinical completeness to the guideline template.\n`;
 
   const supplementalRules = facilityTemplateMode ? '' : `\n${buildPlanSectionRulesBlock()}\n`;
@@ -507,9 +507,9 @@ JSON SCHEMA:
     "plan": "${soapSchema.plan}"
   }${includeSbar ? `,
   "sbar": {
-    "situation": "${facilityTemplateMode ? 'Expanded supported event summary with time, event details, and key descriptors — write like an RN notifying a provider' : 'Concise supported summary of the event'}",
+    "situation": "${facilityTemplateMode ? 'Expanded supported event summary with time, event details, and key descriptors ΓÇö write like an RN notifying a provider' : 'Concise supported summary of the event'}",
     "background": "Relevant supported background including medications and context when provided",
-    "assessment": "${facilityTemplateMode ? 'Expanded supported objective findings, assessment results, and completed nursing actions — not a one-line summary' : 'Supported findings and completed interventions only'}",
+    "assessment": "${facilityTemplateMode ? 'Expanded supported objective findings, assessment results, and completed nursing actions ΓÇö not a one-line summary' : 'Supported findings and completed interventions only'}",
     "recommendation": "${facilityTemplateMode ? 'Guideline-based specific recommendations using prospective language; avoid vague Continue to monitor wording; do not claim unsupported completed notifications' : 'Category B prospective guideline recommendations, monitoring instructions, and follow-up actions; do not claim unsupported completed notifications'}"
   }` : ""},
   "qualityCheck": {
@@ -532,8 +532,8 @@ export function buildPass1GenerationUserPrompt(
     ? `Complete the EXACT FILLABLE FACILITY TEMPLATE from the system instructions.
 Preserve every facility prompt label, standalone instruction, and prompt order in the SOAP JSON fields.
 Never merge separate facility prompts into one line.
-Rewrite Subjective into professional nursing documentation — do not copy raw dictated text.
-Write professional nursing narrative after each prompt label — especially in Objective — while keeping every prompt visible.
+Rewrite Subjective into professional nursing documentation ΓÇö do not copy raw dictated text.
+Write professional nursing narrative after each prompt label ΓÇö especially in Objective ΓÇö while keeping every prompt visible.
 Synthesize supported objective findings from the full input; never write "unknown" when the information exists elsewhere.
 Fill supported values after each prompt. Leave unsupported colon prompts visible with blank values.`
     : `Use the full facility guideline template and FACILITY GUIDELINE PLAN LIBRARY from the system instructions as the authoritative framework.
@@ -543,7 +543,7 @@ Assemble the Plan from the plan library: Category A from narrative facts; Catego
   return `Generate the complete structured documentation JSON.
 
 ${frameworkLine}
-Use the nurse narrative below as the sole source of documented facts. Rewrite into professional nursing documentation — do not copy or translate the raw text verbatim.
+Use the nurse narrative below as the sole source of documented facts. Rewrite into professional nursing documentation ΓÇö do not copy or translate the raw text verbatim.
 
 NURSE NARRATIVE (preserve all clinically relevant facts):
 ${clinicalInfo}
@@ -571,11 +571,11 @@ export function buildPass2ReviewInstructions(
 - Do not delete blank required prompts
 - Leave unsupported colon prompts visible with blank values
 - Preserve every standing facility Plan instruction exactly as written in the template
-- Rewrite Subjective into professional nursing language — do not leave raw dictation
+- Rewrite Subjective into professional nursing language ΓÇö do not leave raw dictation
 - Use professional nursing narrative inside prompt values, especially in Objective; synthesize supported findings from the full input
 - Infer only routine nursing assessments under Nursing interventions completed when clearly implied
 - Generate DSP/staff monitoring instructions when required; do not auto-complete staff understanding unless explicitly documented
-- Expand SBAR Situation and Assessment with supported detail — avoid one-line summaries
+- Expand SBAR Situation and Assessment with supported detail ΓÇö avoid one-line summaries
 - Do not convert the SOAP sections into unstructured narrative paragraphs without prompt labels
 - Only correct omissions, contradictions, merged prompts, invented medications/treatments, invented completed notifications, or unsupported content
 
@@ -1005,7 +1005,7 @@ export function buildStructuredGenerationUserPrompt(
   return buildPass1GenerationUserPrompt(clinicalInfo, supplementText, includeSbar);
 }
 
-/** @deprecated Legacy validation that rewrites note text — prefer validateAiDocumentationOutput */
+/** @deprecated Legacy validation that rewrites note text ΓÇö prefer validateAiDocumentationOutput */
 export function validateStructuredDocumentation(
   parsed: StructuredDocumentationResponse,
   input: string,
