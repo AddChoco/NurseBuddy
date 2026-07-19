@@ -40,6 +40,18 @@ import {
   buildPass2ReviewUserPrompt,
   toDocumentationQualityCheck,
 } from './structuredDocumentation.ts';
+import {
+  buildTemplateLockDocumentation,
+  buildTemplateLockPass1Instructions,
+  buildTemplateLockPass1UserPrompt,
+  buildTemplateLockPass2Instructions,
+  buildTemplateLockPass2UserPrompt,
+  buildTemplateLockSchema,
+  emptyTemplateLockValues,
+  parseTemplateLockResponse,
+  parseTemplateLockSbar,
+  type TemplateLockValues,
+} from './guidelines/templateLockMode.ts';
 
 export interface PromptDebugInfo {
   facilityTemplateMode: boolean;
@@ -194,6 +206,96 @@ function finalizeValidatedResult(
   };
 }
 
+async function runTemplateLockGeneration(
+  callOpenAI: (instructions: string, input: string, temperature?: number) => Promise<string>,
+  context: AiGenerationContext,
+  includeSbar: boolean,
+): Promise<{
+  parsed: StructuredDocumentationResponse;
+  pass2Ran: boolean;
+  templateLockValues: TemplateLockValues;
+  templateLockSchema: ReturnType<typeof buildTemplateLockSchema>;
+}> {
+  const schema = buildTemplateLockSchema(context.def, context.assessmentType);
+  const pass1Instructions = buildTemplateLockPass1Instructions(
+    context.def,
+    context.terminology,
+    context.assessmentType,
+    includeSbar,
+  );
+  const pass1Input = buildTemplateLockPass1UserPrompt(context.clinicalInfo, context.supplementText);
+  const pass1Raw = await callOpenAI(pass1Instructions, pass1Input, 0.35);
+
+  let pass2Ran = false;
+  let workingRaw = pass1Raw;
+  let parseResult = parseTemplateLockResponse(workingRaw, schema);
+  let built = buildTemplateLockDocumentation({
+    schema,
+    aiValues: parseResult.values,
+    input: context.combinedInput,
+    def: context.def,
+    assessmentType: context.assessmentType,
+    terminology: context.terminology,
+  });
+
+  const needsPass2 =
+    parseResult.errors.length > 0
+    || parseResult.unknownKeys.length > 0
+    || built.validationErrors.length > 0;
+
+  if (needsPass2) {
+    pass2Ran = true;
+    const pass2Instructions = buildTemplateLockPass2Instructions(context.def, context.assessmentType);
+    const pass2Input = buildTemplateLockPass2UserPrompt({
+      sourceNarrative: context.combinedInput,
+      draftValues: built.values,
+      validationErrors: [
+        ...parseResult.errors,
+        ...parseResult.unknownKeys.map((key) => `Unknown key: ${key}`),
+        ...built.validationErrors,
+      ],
+    });
+    workingRaw = await callOpenAI(pass2Instructions, pass2Input, 0.2);
+    parseResult = parseTemplateLockResponse(workingRaw, schema);
+    built = buildTemplateLockDocumentation({
+      schema,
+      aiValues: parseResult.values,
+      input: context.combinedInput,
+      def: context.def,
+      assessmentType: context.assessmentType,
+      terminology: context.terminology,
+    });
+
+    if (
+      parseResult.errors.length > 0
+      || parseResult.unknownKeys.length > 0
+      || built.validationErrors.length > 0
+    ) {
+      throw new Error(
+        `Template lock validation failed after pass 2: ${[
+          ...parseResult.errors,
+          ...parseResult.unknownKeys.map((key) => `Unknown key: ${key}`),
+          ...built.validationErrors,
+        ].join(' | ')}`,
+      );
+    }
+  }
+
+  const sbar = includeSbar ? parseTemplateLockSbar(workingRaw) : null;
+  const parsed: StructuredDocumentationResponse = {
+    soap: built.soap,
+    sbar,
+    qualityCheckCompleteness: { provided: [], missing: [] },
+  };
+
+  return {
+    parsed,
+    pass2Ran,
+    templateLockValues: built.values,
+    templateLockSchema: schema,
+  };
+}
+
 export async function generateAiDocumentationBundle(
   callOpenAI: (instructions: string, input: string, temperature?: number) => Promise<string>,
   guidelineDisplayName: string,
@@ -219,6 +321,78 @@ export async function generateAiDocumentationBundle(
     templateOptions,
   );
 
+  if (isFacilityTemplateMode(context.outputMode)) {
+    const templateLockPass1Instructions = buildTemplateLockPass1Instructions(
+      context.def,
+      context.terminology,
+      context.assessmentType,
+      includeSbar,
+    );
+    const templateLockPass1Input = buildTemplateLockPass1UserPrompt(
+      context.clinicalInfo,
+      context.supplementText,
+    );
+
+    logPromptDebug(buildPromptDebugInfo(context, templateLockPass1Instructions, templateLockPass1Input));
+    console.log({
+      edgeFunctionVersion: EDGE_FUNCTION_VERSION,
+      facilityTemplateMode: true,
+      templateLockMode: true,
+      facilityInstructionsIncluded: templateLockPass1Instructions.includes('TEMPLATE LOCK MODE'),
+      guideline: context.def.displayName,
+      assessmentType: context.assessmentType,
+      promptLength: templateLockPass1Instructions.length,
+    });
+
+    const templateLockResult = await runTemplateLockGeneration(
+      callOpenAI,
+      context,
+      includeSbar,
+    );
+    const finalValidation = validateAiDocumentationOutput(
+      templateLockResult.parsed,
+      context.combinedInput,
+      context.def,
+      context.assessmentType,
+      context.outputMode,
+      context.templateOptions,
+      context.terminology,
+      {
+        values: templateLockResult.templateLockValues,
+        schema: templateLockResult.templateLockSchema,
+        skipSoapSectionEnrichment: true,
+      },
+    );
+
+    if (!finalValidation.isValid) {
+      throw new Error(
+        `Facility template validation failed after template lock render: ${finalValidation.errors.join(' | ')}`,
+      );
+    }
+
+    const validated = finalizeValidatedResult(
+      templateLockResult.parsed,
+      context.combinedInput,
+      context.def,
+      context.assessmentType,
+      finalValidation,
+    );
+    const generationMeta = buildGenerationMeta({
+      guideline: context.def.displayName,
+      assessmentType: context.assessmentType,
+      facilityInstructionsIncluded: true,
+      pass2Ran: templateLockResult.pass2Ran,
+      fillableTemplateIncluded: true,
+    });
+
+    return {
+      validated,
+      qualityCheck: toDocumentationQualityCheck(validated, finalValidation),
+      generationMeta,
+      pass2Ran: templateLockResult.pass2Ran,
+    };
+  }
+
   const pass1Instructions = buildPass1GenerationInstructions(
     context.def,
     context.terminology,
@@ -235,14 +409,11 @@ export async function generateAiDocumentationBundle(
     context.outputMode,
   );
 
-  if (isFacilityTemplateMode(context.outputMode)) {
-    assertFacilityTemplateInstructionsPresent(pass1Instructions);
-  }
-
   logPromptDebug(buildPromptDebugInfo(context, pass1Instructions, pass1Input));
   console.log({
     edgeFunctionVersion: EDGE_FUNCTION_VERSION,
     facilityTemplateMode: isFacilityTemplateMode(context.outputMode),
+    templateLockMode: false,
     facilityInstructionsIncluded: pass1Instructions.includes(FACILITY_TEMPLATE_MODE_MARKER),
     guideline: context.def.displayName,
     assessmentType: context.assessmentType,

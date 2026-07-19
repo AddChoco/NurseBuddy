@@ -13,6 +13,9 @@ import { getFacilityPromptValue } from './planPromptEnrichment';
 import { extractPlanStandingInstructions, getFacilityFormTemplate } from './facilityFormTemplates';
 import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode';
 import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction';
+import type { TemplateLockSchema, TemplateLockValues } from './templateLockMode';
+import { getTemplateLockFieldById, isStructuredFieldDocumented } from './templateLockMode';
+import { getFieldIdForChecklistLabel } from './templateLockPopulation';
 
 export interface CategorizedMissingItem {
   label: string;
@@ -47,12 +50,19 @@ const SUPPLEMENTAL_CHECK_ITEMS: Array<{
     label: 'Nursing interventions',
     documentedLabel: 'Nursing interventions documented',
     category: 'facility_required',
-    isPresent: ({ facts, soapText, enrichment }) => {
+    isPresent: ({ facts, enrichment, planText, input, standingInstructions, templateLockValues, templateLockSchema }) => {
+      if (templateLockValues && templateLockSchema) {
+        return isStructuredFieldDocumented(
+          templateLockValues,
+          'nursingInterventionsCompleted',
+          templateLockSchema,
+        );
+      }
       if (enrichment?.nursingInterventionsSummary) return true;
       return Boolean(
         facts.nursingInterventionsCompleted
-        && (/nursing interventions completed:\s*\n[^\n:]+/i.test(soapText)
-          || /nursing interventions completed:\s+\S/i.test(soapText)),
+        && (/nursing interventions completed:\s*\n[^\n:]+/i.test(planText)
+          || /nursing interventions completed:\s+\S/i.test(planText)),
       );
     },
   },
@@ -80,6 +90,8 @@ interface QualityCheckContext {
   facts: ReturnType<typeof extractClinicalFacts>;
   enrichment?: PlanEnrichmentResult | null;
   standingInstructions: ReadonlySet<string>;
+  templateLockValues?: TemplateLockValues | null;
+  templateLockSchema?: TemplateLockSchema | null;
 }
 
 function normalizeSearchText(parts: string[]): string {
@@ -120,6 +132,14 @@ function stripTemplatePromptLabels(text: string): string {
 }
 
 function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
+  if (context.templateLockValues && context.templateLockSchema) {
+    return isStructuredFieldDocumented(
+      context.templateLockValues,
+      'staffUnderstandingConfirmation',
+      context.templateLockSchema,
+    );
+  }
+
   const promptValue = getFacilityPromptValue(
     context.planText,
     STAFF_EDUCATION_PROMPT,
@@ -151,6 +171,28 @@ function isFieldPresent(
   def: GuidelineDefinition,
   context: QualityCheckContext,
 ): boolean {
+  if (context.templateLockValues && context.templateLockSchema) {
+    const fieldId = getFieldIdForChecklistLabel(context.templateLockSchema, fieldLabel);
+    if (fieldId) {
+      return isStructuredFieldDocumented(context.templateLockValues, fieldId, context.templateLockSchema);
+    }
+
+    const normalizedLabel = fieldLabel.toLowerCase();
+    const matchingField = context.templateLockSchema.fields.find((field) => {
+      const promptLabel = field.label.replace(/:\s*$/, '').toLowerCase();
+      return promptLabel === normalizedLabel
+        || normalizedLabel.includes(promptLabel)
+        || promptLabel.includes(normalizedLabel);
+    });
+    if (matchingField) {
+      return isStructuredFieldDocumented(
+        context.templateLockValues,
+        matchingField.id,
+        context.templateLockSchema,
+      );
+    }
+  }
+
   const evidenceText = stripTemplatePromptLabels(context.searchableText);
 
   if (/gastric bleeding/i.test(fieldLabel)) {
@@ -225,6 +267,8 @@ export function buildDocumentationQualityCheck(args: {
   def: GuidelineDefinition;
   assessmentType: AssessmentType;
   enrichment?: PlanEnrichmentResult | null;
+  templateLockValues?: TemplateLockValues | null;
+  templateLockSchema?: TemplateLockSchema | null;
 }): DocumentationQualityCheckResult {
   const combinedSoap = [args.soap.subjective, args.soap.objective, args.soap.assessment, args.soap.plan].join('\n');
   const standingInstructions = new Set(extractPlanStandingInstructions(getFacilityFormTemplate(args.def, args.assessmentType)));
@@ -238,6 +282,8 @@ export function buildDocumentationQualityCheck(args: {
     facts,
     enrichment: args.enrichment,
     standingInstructions,
+    templateLockValues: args.templateLockValues,
+    templateLockSchema: args.templateLockSchema,
   };
 
   const provided: string[] = [];

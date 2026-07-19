@@ -42,6 +42,7 @@ import {
   detectNegativeFillerClaims,
   sanitizeFacilityTemplateSections,
 } from './guidelines/facilityTemplateSanitization.ts';
+import type { TemplateLockSchema, TemplateLockValues } from './guidelines/templateLockMode.ts';
 
 export interface StructuredSoap {
   subjective: string;
@@ -652,19 +653,22 @@ export function applyFacilityPlanEnrichment(
   assessmentType: AssessmentType,
   templateOptions?: FacilityTemplateOptions,
   terminology = 'resident',
+  options?: { skipSoapSectionEnrichment?: boolean },
 ): PlanEnrichmentResult | null {
   const resolvedTemplateOptions = resolveFacilityTemplateOptions(templateOptions);
   const template = getFacilityFormTemplate(def, assessmentType);
 
   parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
-  parsed.soap = enrichFacilitySoapSections(
-    parsed.soap,
-    input,
-    def,
-    assessmentType,
-    template,
-    terminology,
-  );
+  if (!options?.skipSoapSectionEnrichment) {
+    parsed.soap = enrichFacilitySoapSections(
+      parsed.soap,
+      input,
+      def,
+      assessmentType,
+      template,
+      terminology,
+    );
+  }
 
   const enrichment = enrichFacilityPlanPrompts(
     parsed.soap.plan,
@@ -717,6 +721,8 @@ function reconcileQualityCheckCompleteness(
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
   enrichment?: PlanEnrichmentResult | null,
+  templateLockValues?: TemplateLockValues | null,
+  templateLockSchema?: TemplateLockSchema | null,
 ): StructuredQualityCheckCompleteness {
   const deterministic = buildDocumentationQualityCheck({
     input,
@@ -724,6 +730,8 @@ function reconcileQualityCheckCompleteness(
     def,
     assessmentType,
     enrichment,
+    templateLockValues,
+    templateLockSchema,
   });
 
   return {
@@ -837,6 +845,12 @@ export function validateFacilityTemplatePreservation(
   return errors;
 }
 
+export interface TemplateLockValidationContext {
+  values: TemplateLockValues;
+  schema: TemplateLockSchema;
+  skipSoapSectionEnrichment?: boolean;
+}
+
 export function validateAiDocumentationOutput(
   parsed: StructuredDocumentationResponse,
   input: string,
@@ -845,6 +859,7 @@ export function validateAiDocumentationOutput(
   outputMode: DocumentationOutputMode = DEFAULT_DOCUMENTATION_OUTPUT_MODE,
   templateOptions?: FacilityTemplateOptions,
   terminology = 'resident',
+  templateLockContext?: TemplateLockValidationContext,
 ): AiValidationResult {
   let enrichment: PlanEnrichmentResult | null = null;
   if (isFacilityTemplateMode(outputMode)) {
@@ -855,6 +870,7 @@ export function validateAiDocumentationOutput(
       assessmentType,
       templateOptions,
       terminology,
+      { skipSoapSectionEnrichment: templateLockContext?.skipSoapSectionEnrichment },
     );
   }
 
@@ -911,7 +927,15 @@ export function validateAiDocumentationOutput(
     errors.push(...validateFacilityTemplatePreservation(parsed.soap, def, assessmentType));
   }
 
-  const completeness = reconcileQualityCheckCompleteness(parsed, input, def, assessmentType, enrichment);
+  const completeness = reconcileQualityCheckCompleteness(
+    parsed,
+    input,
+    def,
+    assessmentType,
+    enrichment,
+    templateLockContext?.values,
+    templateLockContext?.schema,
+  );
 
   for (const missingItem of completeness.missing) {
     if (facts.eventTime && /report time|event time/i.test(missingItem)) {
