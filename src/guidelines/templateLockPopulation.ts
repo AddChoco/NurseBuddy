@@ -10,6 +10,8 @@ import {
   buildTemplateLockSchema,
   emptyTemplateLockValues,
   getTemplateLockFieldById,
+  renderTemplateLockSoap,
+  validateTemplateLockValues,
   type TemplateLockSchema,
   type TemplateLockValues,
 } from './templateLockMode';
@@ -336,4 +338,37 @@ export function getStructuredFieldValueByChecklistLabel(
   if (field.section === 'objective') return values.objective[fieldId] ?? null;
   if (field.section === 'subjective') return values.subjective[fieldId] ?? null;
   return null;
+}
+
+export function buildTemplateLockDocumentation(args: {
+  schema: TemplateLockSchema;
+  aiValues: TemplateLockValues;
+  input: string;
+  def: GuidelineDefinition;
+  assessmentType: AssessmentType;
+  terminology: string;
+}): {
+  values: TemplateLockValues;
+  schema: TemplateLockSchema;
+  soap: { subjective: string; objective: string; assessment: string; plan: string };
+  validationErrors: string[];
+} {
+  const deterministicValues = populateTemplateLockValuesFromInput(
+    emptyTemplateLockValues(),
+    args.schema,
+    args.input,
+    args.def,
+    args.assessmentType,
+    args.terminology,
+  );
+  const mergedValues = mergeTemplateLockValues(args.aiValues, deterministicValues, args.schema);
+  const validation = validateTemplateLockValues(mergedValues, args.schema, args.input);
+  const soap = renderTemplateLockSoap(args.schema, validation.values);
+
+  return {
+    values: validation.values,
+    schema: args.schema,
+    soap,
+    validationErrors: [...validation.errors],
+  };
 }

@@ -1,4 +1,4 @@
-import type { GuidelineDefinition } from './guidelines/types.ts';
+import type { GuidelineDefinition } from '../guidelines/types';
 import {
   detectAssessmentType,
   type AssessmentType,
@@ -9,23 +9,23 @@ import {
   resolveDocumentationOutputMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
-} from './guidelines/facilityTemplateMode.ts';
+} from '../guidelines/facilityTemplateMode';
 import {
   buildGuidelineContextBlock,
   getAssessmentInstructionsForType,
   getDocumentationTypeInstructions,
-} from './guidelines/guidelineEngine.ts';
-import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
-import { buildGuidelinePlanLibraryBlock } from './guidelines/guidelinePlanLibrary.ts';
-import { buildFillableTemplateBlock, getFacilityFormTemplate } from './guidelines/facilityFormTemplates.ts';
-import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
+} from '../guidelines/guidelineEngine';
+import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
+import { buildGuidelinePlanLibraryBlock } from '../guidelines/guidelinePlanLibrary';
+import { buildFillableTemplateBlock, getFacilityFormTemplate } from '../guidelines/facilityFormTemplates';
+import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
 import {
   assertFacilityTemplateInstructionsPresent,
   buildGenerationMeta,
   EDGE_FUNCTION_VERSION,
   FACILITY_TEMPLATE_MODE_MARKER,
   type GenerationMeta,
-} from './generationMeta.ts';
+} from './generationMeta';
 import {
   parseStructuredDocumentation,
   formatSoapDocument,
@@ -39,9 +39,8 @@ import {
   buildPass2ReviewInstructions,
   buildPass2ReviewUserPrompt,
   toDocumentationQualityCheck,
-} from './structuredDocumentation.ts';
+} from './structuredDocumentation';
 import {
-  buildTemplateLockDocumentation,
   buildTemplateLockPass1Instructions,
   buildTemplateLockPass1UserPrompt,
   buildTemplateLockPass2Instructions,
@@ -51,7 +50,8 @@ import {
   parseTemplateLockResponse,
   parseTemplateLockSbar,
   type TemplateLockValues,
-} from './guidelines/templateLockMode.ts';
+} from '../guidelines/templateLockMode';
+import { buildTemplateLockDocumentation } from '../guidelines/templateLockPopulation';
 
 export interface PromptDebugInfo {
   facilityTemplateMode: boolean;

@@ -41,7 +41,6 @@ import {
   toDocumentationQualityCheck,
 } from './structuredDocumentation';
 import {
-  buildTemplateLockDocumentation,
   buildTemplateLockPass1Instructions,
   buildTemplateLockPass1UserPrompt,
   buildTemplateLockPass2Instructions,
@@ -52,6 +51,7 @@ import {
   parseTemplateLockSbar,
   type TemplateLockValues,
 } from '../guidelines/templateLockMode';
+import { buildTemplateLockDocumentation } from '../guidelines/templateLockPopulation';
 
 export interface PromptDebugInfo {
   facilityTemplateMode: boolean;

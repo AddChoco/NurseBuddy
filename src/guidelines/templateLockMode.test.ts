@@ -4,13 +4,13 @@ import { VOMITING_GUIDELINE } from './definitions/vomiting';
 import { getFacilityFormTemplate } from './facilityFormTemplates';
 import { buildDocumentationQualityCheck } from './documentationQualityCheck';
 import {
-  buildTemplateLockDocumentation,
   buildTemplateLockSchema,
   emptyTemplateLockValues,
   parseTemplateLockResponse,
   renderTemplateLockSoap,
   validateTemplateLockValues,
 } from './templateLockMode';
+import { buildTemplateLockDocumentation } from './templateLockPopulation';
 import { validateAiDocumentationOutput } from '../lib/structuredDocumentation';
 
 const ELEVATED_TEMP_FOLLOW_UP_INPUT =

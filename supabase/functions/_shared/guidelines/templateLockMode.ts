@@ -1,15 +1,11 @@
-import type { GuidelineDefinition } from './types.ts';
-import type { AssessmentType } from './facilityTemplateMode.ts';
+import type { GuidelineDefinition } from './types';
+import type { AssessmentType } from './facilityTemplateMode';
 import {
   extractPlanStandingInstructions,
   getFacilityFormTemplate,
-} from './facilityFormTemplates.ts';
-import { isNegativeFillerValue } from './facilityTemplateSanitization.ts';
-import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
-import {
-  mergeTemplateLockValues,
-  populateTemplateLockValuesFromInput,
-} from './templateLockPopulation.ts';
+} from './facilityFormTemplates';
+import { isNegativeFillerValue } from './facilityTemplateSanitization';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction';
 
 export type TemplateLockSection = 'subjective' | 'objective' | 'assessment' | 'plan';
 
@@ -684,44 +680,3 @@ export function parseTemplateLockSbar(raw: string): {
   }
 }
 
-export interface TemplateLockPipelineResult {
-  values: TemplateLockValues;
-  schema: TemplateLockSchema;
-  soap: { subjective: string; objective: string; assessment: string; plan: string };
-  sbar: {
-    situation: string;
-    background: string;
-    assessment: string;
-    recommendation: string;
-  } | null;
-  validationErrors: string[];
-  pass2Ran: boolean;
-}
-
-export function buildTemplateLockDocumentation(args: {
-  schema: TemplateLockSchema;
-  aiValues: TemplateLockValues;
-  input: string;
-  def: GuidelineDefinition;
-  assessmentType: AssessmentType;
-  terminology: string;
-}): Omit<TemplateLockPipelineResult, 'pass2Ran' | 'sbar'> {
-  const deterministicValues = populateTemplateLockValuesFromInput(
-    emptyTemplateLockValues(),
-    args.schema,
-    args.input,
-    args.def,
-    args.assessmentType,
-    args.terminology,
-  );
-  const mergedValues = mergeTemplateLockValues(args.aiValues, deterministicValues, args.schema);
-  const validation = validateTemplateLockValues(mergedValues, args.schema, args.input);
-  const soap = renderTemplateLockSoap(args.schema, validation.values);
-
-  return {
-    values: validation.values,
-    schema: args.schema,
-    soap,
-    validationErrors: [...validation.errors],
-  };
-}
