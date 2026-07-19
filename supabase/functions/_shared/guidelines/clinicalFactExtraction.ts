@@ -1,4 +1,5 @@
 import type { GuidelineId } from './types.ts';
+import { parseDocumentedEventTime } from './eventTimeParsing.ts';
 
 /**
  * Structured clinical facts extracted deterministically from nurse input.
@@ -82,8 +83,7 @@ function normalizeWhitespace(value: string): string {
 }
 
 function extractEventTime(input: string): string | null {
-  const match = input.match(/\b(?:at\s+)?(\d{3,4}|\d{1,2}:\d{2})\b/i);
-  return match ? match[1] : null;
+  return parseDocumentedEventTime(input);
 }
 
 function extractReporterName(input: string): string | null {

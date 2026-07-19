@@ -1,6 +1,6 @@
-export const EDGE_FUNCTION_VERSION = "2026-07-18-plan-enrichment-v3";
-export const TEMPLATE_MODE_LABEL = "facility-template-v2";
-export const FACILITY_TEMPLATE_MODE_MARKER = "FACILITY TEMPLATE COMPLETION MODE";
+export const EDGE_FUNCTION_VERSION = '2026-07-18-documentation-quality-v6';
+export const TEMPLATE_MODE_LABEL = 'facility-template-v2';
+export const FACILITY_TEMPLATE_MODE_MARKER = 'FACILITY TEMPLATE COMPLETION MODE';
 
 export interface GenerationMeta {
   templateMode: typeof TEMPLATE_MODE_LABEL;
@@ -32,6 +32,6 @@ export function buildGenerationMeta(args: {
 
 export function assertFacilityTemplateInstructionsPresent(instructions: string): void {
   if (!instructions.includes(FACILITY_TEMPLATE_MODE_MARKER)) {
-    throw new Error("Facility template instructions are missing from the live OpenAI request.");
+    throw new Error('Facility template instructions are missing from the live OpenAI request.');
   }
 }

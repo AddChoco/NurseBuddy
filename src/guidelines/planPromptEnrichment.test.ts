@@ -59,8 +59,12 @@ describe('planPromptEnrichment', () => {
     expect(enrichment.plan).toMatch(
       /DSP\/staff instructed to monitor[\s\S]*\nStaff verbalized or demonstrated understanding of instructions provided:/,
     );
-    expect(enrichment.staffUnderstandingValue).toBeNull();
-    expect(enrichment.reviewWarnings).toContain('Confirm whether DSP verbalized or demonstrated understanding.');
+    expect(enrichment.staffUnderstandingValue).toBe(
+      'Staff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements.',
+    );
+    expect(enrichment.plan).toMatch(
+      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements\./,
+    );
   });
 
   it('uses guideline fallback when only completion is documented', () => {
@@ -97,9 +101,11 @@ describe('planPromptEnrichment', () => {
     );
 
     expect(planDocumentsNursingInterventions(parsed.soap.plan, FALL_GUIDELINE, 'follow_up')).toBe(true);
-    expect(validation.completeness.provided).toContain('Nursing interventions completed');
-    expect(validation.completeness.provided).toContain('Staff education instructions generated');
-    expect(validation.completeness.missing).toContain('Confirm whether DSP verbalized or demonstrated understanding.');
+    expect(validation.completeness.provided).toContain('Nursing interventions documented');
+    expect(validation.completeness.provided).toContain('Staff education documented');
+    expect(validation.completeness.provided).toContain('Staff instructions documented');
+    expect(validation.completeness.missing).not.toContain('Confirm whether DSP verbalized or demonstrated understanding.');
+    expect(parsed.soap.plan).toContain('Staff verbalized understanding of neurological monitoring');
     expect(validation.errors.some((error) => /missing from the Plan/i.test(error))).toBe(false);
   });
 
@@ -114,9 +120,11 @@ describe('planPromptEnrichment', () => {
       { autoCompleteStaffEducation: true },
     );
 
-    expect(enrichment.staffUnderstandingValue).toBe('DSP verbalized understanding of the instructions provided.');
+    expect(enrichment.staffUnderstandingValue).toBe(
+      'Staff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements.',
+    );
     expect(enrichment.plan).toMatch(
-      /Staff verbalized or demonstrated understanding of instructions provided:\nDSP verbalized understanding of the instructions provided\./,
+      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements\./,
     );
   });
 

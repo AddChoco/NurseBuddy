@@ -149,7 +149,7 @@ export const clinicalSamples: ClinicalSample[] = [
     guidelineId: 'vomiting',
     assessmentType: 'Follow-up',
     clinicalInformation:
-      'At 1730, DSP reported that the individual vomited once immediately after dinner. Emesis contained undigested food. No further vomiting reported. Individual denies nausea. Respirations even and unlabored. Abdomen soft and non-tender. Intake for the past 24 hours was approximately 52 oz. Five voids and one bowel movement documented.',
+      'One emesis episode yesterday at 1730 after dinner. Emesis contained undigested food. DSP reported the individual ate too fast. Currently sleeping in bed. Respirations even and unlabored. No aspiration or respiratory distress. Abdomen soft and non-tender. No pain. Vital signs within normal limits. 100% meals. 52 oz fluid intake. 5 voids. 1 bowel movement. No nausea or further vomiting. Sitting upright.',
   }),
   sample({
     id: 'vomiting-resolution',

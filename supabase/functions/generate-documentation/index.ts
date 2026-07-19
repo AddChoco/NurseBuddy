@@ -183,7 +183,10 @@ Never invent:
 Do not use speculative language ("it seems", "may have been", "possibly related to", "appears to be").
 Do not fabricate provider communication or orders.
 Do not assume the LAR was notified unless reported.
-Use a warm, professional tone with a simple greeting and closing.`,
+Use a warm, professional tone with a simple greeting and closing.
+End with a concise facility-based follow-up statement such as:
+"Staff will continue monitoring according to the facility [Guideline Name] Guideline and will report any recurrence or change in condition."
+Do not overstate that the resident is stable, improving, or resolved unless supported by the source documentation.`,
 
   // Legacy labels retained for backward compatibility
   "SBAR": `OUTPUT FORMAT: Provider Notification (SBAR)
@@ -420,7 +423,19 @@ async function generateDocument(
     supplementText,
   );
   const input = buildUserPrompt(guideline, outputType, clinicalInfo, supplementText);
-  return callOpenAI(apiKey, instructions, input);
+  const content = await callOpenAI(apiKey, instructions, input);
+  if (outputType !== LAR_EMAIL_LABEL) return content;
+  return appendLarGuidelineFollowUp(content, guideline);
+}
+
+function appendLarGuidelineFollowUp(content: string, guidelineDisplayName: string): string {
+  const followUp =
+    `Staff will continue monitoring according to the facility ${guidelineDisplayName} Guideline and will report any recurrence or change in condition.`;
+  const normalized = content.trim();
+  if (/continue monitoring according to the facility/i.test(normalized)) {
+    return normalized;
+  }
+  return `${normalized}\n\n${followUp}`;
 }
 
 async function generateDocumentationBundle(

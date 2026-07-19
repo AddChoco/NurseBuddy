@@ -1,22 +1,30 @@
 import type { GuidelineDefinition } from './types.ts';
 import type { AssessmentType } from './facilityTemplateMode.ts';
 import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode.ts';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
 import {
-  detectNursingInterventionsCompleted,
-  detectStaffUnderstandingConfirmed,
-  extractClinicalFacts,
-  type ClinicalFacts,
-} from './clinicalFactExtraction.ts';
-import {
-  extractPlanSectionLines,
+  extractPlanCompletionPrompts,
   extractPlanStandingInstructions,
   getFacilityFormTemplate,
 } from './facilityFormTemplates.ts';
+import { getGuidelineRequirementConfig } from './guidelineRequirementConfigs.ts';
 import {
-  getGuidelineRequirementConfig,
-} from './guidelineRequirementConfigs.ts';
+  createPlanDocumentationContext,
+  evaluateGuidelinePlanRules,
+  shouldPopulateNursingInterventionsFromRules,
+  type PlanEnrichmentInput,
+} from './guidelinePlanRuleEngine.ts';
+
+export type { PlanEnrichmentInput };
 
 const NURSING_INTERVENTIONS_PROMPT = 'Nursing interventions completed:';
+
+function resolveNursingInterventionsPrompt(template: string): string | null {
+  const prompts = extractPlanCompletionPrompts(template);
+  return prompts.find((prompt) => /^Nursing interventions completed:$/i.test(prompt))
+    ?? prompts.find((prompt) => /nursing interventions completed:/i.test(prompt))
+    ?? null;
+}
 
 const STAFF_EDUCATION_PROVIDED_PATTERNS = [
   /\bstaff instructed\b/i,
@@ -43,118 +51,6 @@ export interface PlanEnrichmentResult {
 
 function detectStaffEducationProvided(input: string): boolean {
   return STAFF_EDUCATION_PROVIDED_PATTERNS.some((pattern) => pattern.test(input));
-}
-
-function capitalizeFirstWord(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatAssessedAreas(areas: string[]): string {
-  const normalized = areas.map((area) => area.toLowerCase());
-  if (normalized.length === 0) return '';
-  if (normalized.length === 1) return `${capitalizeFirstWord(normalized[0])} was assessed.`;
-  if (normalized.length === 2) {
-    return `${capitalizeFirstWord(normalized[0])} and ${normalized[1]} were assessed.`;
-  }
-  const last = normalized[normalized.length - 1];
-  const rest = normalized.slice(0, -1).join(', ');
-  return `${capitalizeFirstWord(rest)}, and ${last} were assessed.`;
-}
-
-function extractMedicationReviewSentence(input: string, facts: ClinicalFacts): string | null {
-  const aspirinMatch = input.match(/\baspirin\s+81\s*mg\b/i);
-  if (aspirinMatch) return 'Current aspirin use was reviewed.';
-
-  if (facts.medications.length > 0) {
-    const medList = facts.medications.join(', ');
-    return `Current ${medList} use was reviewed.`;
-  }
-
-  if (/\b(?:taking|on|uses?)\s+(?:aspirin|eliquis|warfarin|plavix|blood thinner|anticoagulant)\b/i.test(input)) {
-    return 'Current anticoagulant or antiplatelet medication use was reviewed.';
-  }
-
-  return null;
-}
-
-function buildFallFollowUpNursingInterventionsSummary(
-  input: string,
-  facts: ClinicalFacts,
-): string {
-  const assessedAreas: string[] = [];
-
-  if (/\bvital signs\b|\bvitals\b/i.test(input) || facts.vitalSigns) {
-    assessedAreas.push('vital signs');
-  }
-  if (/\bneurological\b|\bmental status\b/i.test(input) || facts.neurologicalAssessment) {
-    assessedAreas.push('neurological and mental status');
-  }
-  if (/\bpain\b/i.test(input) || facts.painPresent !== null) {
-    assessedAreas.push('pain');
-  }
-  if (/\bbruising\b|\bskin\b|\bvisible injury\b/i.test(input) || facts.visibleInjury) {
-    assessedAreas.push('skin condition');
-  }
-  if (/\bmobility\b|\bambulat|\bwalker\b|\bgait\b|\btransfer\b|\brange of motion\b/i.test(input)) {
-    assessedAreas.push('mobility');
-  }
-
-  const parts = ['Follow-up nursing assessment completed.'];
-  if (assessedAreas.length > 0) {
-    parts.push(formatAssessedAreas(assessedAreas));
-  }
-
-  const medicationReview = extractMedicationReviewSentence(input, facts);
-  if (medicationReview) parts.push(medicationReview);
-
-  if (parts.length === 1) {
-    return 'Nursing interventions completed according to the Fall or Suspected Fall Guideline.';
-  }
-
-  return parts.join(' ');
-}
-
-function buildGenericNursingInterventionsSummary(
-  def: GuidelineDefinition,
-  input: string,
-  facts: ClinicalFacts,
-): string {
-  if (def.id === 'fall' && /\bfollow[- ]?up\b/i.test(input)) {
-    return buildFallFollowUpNursingInterventionsSummary(input, facts);
-  }
-
-  const eventPhrase = facts.eventType === 'fall'
-    ? 'Resident assessed following reported fall.'
-    : facts.eventType === 'head injury'
-      ? 'Resident assessed following reported head injury.'
-      : null;
-
-  if (eventPhrase) return eventPhrase;
-
-  return `Nursing interventions completed according to the ${def.displayName} Guideline.`;
-}
-
-export function buildNursingInterventionsSummary(
-  input: string,
-  def: GuidelineDefinition,
-  assessmentType: AssessmentType,
-): string {
-  const facts = extractClinicalFacts(input, def.id);
-
-  if (def.id === 'fall' && (assessmentType === 'follow_up' || assessmentType === 'resolution' || /\bfollow[- ]?up\b/i.test(input))) {
-    return buildFallFollowUpNursingInterventionsSummary(input, facts);
-  }
-
-  return buildGenericNursingInterventionsSummary(def, input, facts);
-}
-
-export function getStaffMonitoringInstructions(
-  def: GuidelineDefinition,
-  assessmentType: AssessmentType,
-): string | null {
-  const config = getGuidelineRequirementConfig(def.id, assessmentType);
-  return config?.staffMonitoringInstructions ?? null;
 }
 
 function getPromptValue(
@@ -223,12 +119,46 @@ function insertLineBefore(plan: string, beforeLine: string, lineToInsert: string
   return lines.join('\n');
 }
 
+export function buildNursingInterventionsSummary(
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  enrichmentInput?: PlanEnrichmentInput,
+): string {
+  const context = createPlanDocumentationContext(input, def, enrichmentInput);
+  const template = getFacilityFormTemplate(def, assessmentType);
+  const standingInstructions = [...extractPlanStandingInstructions(template)];
+  const templateHasStaffMonitoringInstruction = standingInstructions.some((line) =>
+    /dsp instructed|staff instructed|monitor for and immediately report/i.test(line),
+  );
+  const evaluation = evaluateGuidelinePlanRules(
+    def,
+    assessmentType,
+    context,
+    templateHasStaffMonitoringInstruction,
+    getStaffMonitoringInstructions(def, assessmentType),
+    true,
+  );
+
+  return evaluation.nursingInterventionsSummary
+    ?? `Nursing interventions completed according to the ${def.displayName} Guideline.`;
+}
+
+export function getStaffMonitoringInstructions(
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+): string | null {
+  const config = getGuidelineRequirementConfig(def.id, assessmentType);
+  return config?.staffMonitoringInstructions ?? null;
+}
+
 export function enrichFacilityPlanPrompts(
   plan: string,
   input: string,
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
   options: PlanEnrichmentOptions,
+  enrichmentInput?: PlanEnrichmentInput,
 ): PlanEnrichmentResult {
   const reviewWarnings: string[] = [];
   let enrichedPlan = plan;
@@ -239,26 +169,42 @@ export function enrichFacilityPlanPrompts(
 
   const template = getFacilityFormTemplate(def, assessmentType);
   const standingInstructions = new Set(extractPlanStandingInstructions(template));
+  const templateHasStaffMonitoringInstruction = [...standingInstructions].some((line) =>
+    /dsp instructed|staff instructed|monitor for and immediately report/i.test(line),
+  );
+  const explicitStaffMonitoringInstructions = getStaffMonitoringInstructions(def, assessmentType);
+  const context = createPlanDocumentationContext(input, def, { ...enrichmentInput, plan });
 
-  if (detectNursingInterventionsCompleted(input)) {
-    nursingInterventionsSummary = buildNursingInterventionsSummary(input, def, assessmentType);
-    enrichedPlan = setPromptValue(
-      enrichedPlan,
-      NURSING_INTERVENTIONS_PROMPT,
-      nursingInterventionsSummary,
-      standingInstructions,
-    );
+  const ruleEvaluation = evaluateGuidelinePlanRules(
+    def,
+    assessmentType,
+    context,
+    templateHasStaffMonitoringInstruction,
+    explicitStaffMonitoringInstructions,
+    options.autoCompleteStaffEducation,
+  );
+
+  if (shouldPopulateNursingInterventionsFromRules(def, assessmentType, context)) {
+    nursingInterventionsSummary = ruleEvaluation.nursingInterventionsSummary;
+    const nursingInterventionsPrompt = resolveNursingInterventionsPrompt(template);
+    if (nursingInterventionsSummary && nursingInterventionsPrompt) {
+      enrichedPlan = setPromptValue(
+        enrichedPlan,
+        nursingInterventionsPrompt,
+        nursingInterventionsSummary,
+        standingInstructions,
+      );
+    }
   }
 
   const shouldGenerateStaffEducation =
     options.autoCompleteStaffEducation
     || detectStaffEducationProvided(input)
-    || Boolean(getStaffMonitoringInstructions(def, assessmentType));
+    || Boolean(explicitStaffMonitoringInstructions)
+    || templateHasStaffMonitoringInstruction;
 
   if (shouldGenerateStaffEducation) {
-    staffEducationInstruction =
-      getStaffMonitoringInstructions(def, assessmentType)
-      ?? null;
+    staffEducationInstruction = explicitStaffMonitoringInstructions ?? null;
 
     if (staffEducationInstruction) {
       enrichedPlan = insertLineBefore(
@@ -266,21 +212,24 @@ export function enrichFacilityPlanPrompts(
         STAFF_EDUCATION_PROMPT,
         staffEducationInstruction,
       );
+    }
+
+    if (ruleEvaluation.staffEducationApplicable) {
       staffEducationGenerated = true;
     }
   }
 
   const staffUnderstandingConfirmed = detectStaffUnderstandingConfirmed(input);
-  if (staffUnderstandingConfirmed) {
-    staffUnderstandingValue = 'DSP verbalized understanding of the instructions provided.';
-    enrichedPlan = setPromptValue(
-      enrichedPlan,
-      STAFF_EDUCATION_PROMPT,
-      staffUnderstandingValue,
-      standingInstructions,
-    );
-  } else if (staffEducationGenerated) {
-    reviewWarnings.push('Confirm whether DSP verbalized or demonstrated understanding.');
+  if (staffEducationGenerated || staffUnderstandingConfirmed) {
+    staffUnderstandingValue = ruleEvaluation.staffUnderstandingText;
+    if (staffUnderstandingValue) {
+      enrichedPlan = setPromptValue(
+        enrichedPlan,
+        STAFF_EDUCATION_PROMPT,
+        staffUnderstandingValue,
+        standingInstructions,
+      );
+    }
   }
 
   return {
@@ -302,7 +251,11 @@ export function planDocumentsNursingInterventions(
   const standingInstructions = def && assessmentType
     ? new Set(extractPlanStandingInstructions(getFacilityFormTemplate(def, assessmentType)))
     : new Set<string>();
-  const value = getPromptValue(plan, NURSING_INTERVENTIONS_PROMPT, standingInstructions);
+  const prompt = def && assessmentType
+    ? resolveNursingInterventionsPrompt(getFacilityFormTemplate(def, assessmentType))
+    : NURSING_INTERVENTIONS_PROMPT;
+  if (!prompt) return false;
+  const value = getPromptValue(plan, prompt, standingInstructions);
   return Boolean(value && value.trim().length > 0);
 }
 

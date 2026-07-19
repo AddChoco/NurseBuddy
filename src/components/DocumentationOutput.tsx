@@ -137,12 +137,12 @@ export function DocumentationOutput({
               {qualityCheck.completeness.provided.length > 0 && (
                 <div>
                   <h5 className="mb-1 text-xs font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
-                    Documentation completeness — provided
+                    Information documented
                   </h5>
                   <ul className="space-y-1">
                     {qualityCheck.completeness.provided.map((message) => (
                       <li key={message} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
-                        <span className="mt-0.5">•</span>
+                        <span className="mt-0.5">✓</span>
                         <span>{message}</span>
                       </li>
                     ))}
@@ -150,19 +150,36 @@ export function DocumentationOutput({
                 </div>
               )}
 
-              {qualityCheck.completeness.missing.length > 0 && (
+              {(qualityCheck.completeness.categorizedMissing?.length ?? qualityCheck.completeness.missing.length) > 0 && (
                 <div>
                   <h5 className="mb-1 text-xs font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
                     Required information still missing
                   </h5>
                   <ul className="space-y-1">
-                    {qualityCheck.completeness.missing.map((message) => (
-                      <li key={message} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
-                        <span className="mt-0.5">•</span>
-                        <span>{message}</span>
+                    {(qualityCheck.completeness.categorizedMissing ?? qualityCheck.completeness.missing.map((label) => ({
+                      label,
+                      category: 'facility_required' as const,
+                    }))).map((item) => (
+                      <li key={item.label} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
+                        <span className="mt-0.5">{item.category === 'clinically_useful' ? '○' : '⚠'}</span>
+                        <span>
+                          {item.label}
+                          {item.reason ? `, ${item.reason}` : ''}
+                        </span>
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {typeof qualityCheck.completeness.scorePercent === 'number' && (
+                <div>
+                  <h5 className="mb-1 text-xs font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
+                    Documentation completeness
+                  </h5>
+                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-400/80">
+                    {qualityCheck.completeness.scorePercent}% complete
+                  </p>
                 </div>
               )}
             </div>

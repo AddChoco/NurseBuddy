@@ -18,6 +18,7 @@ import {
 } from '../guidelines/guidelineEngine';
 import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
 import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
+import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from '../guidelines/eventTimeParsing';
 import { validatePlanAgainstLibrary } from '../guidelines/guidelinePlanLibrary';
 import {
   enrichFacilityPlanPrompts,
@@ -26,9 +27,15 @@ import {
   type PlanEnrichmentResult,
 } from '../guidelines/planPromptEnrichment';
 import {
+  enrichFacilitySoapSections,
+  extractSubjectivePromptsFromTemplate,
+  subjectivePromptHasValue,
+} from '../guidelines/soapSectionEnrichment';
+import {
   extractColonPromptsFromTemplate,
   getFacilityFormTemplate,
 } from '../guidelines/facilityFormTemplates';
+import { buildDocumentationQualityCheck } from '../guidelines/documentationQualityCheck';
 
 export interface StructuredSoap {
   subjective: string;
@@ -52,6 +59,12 @@ export interface QualityCheckItem {
 export interface StructuredQualityCheckCompleteness {
   provided: string[];
   missing: string[];
+  scorePercent?: number;
+  categorizedMissing?: Array<{
+    label: string;
+    category: 'facility_required' | 'clinically_useful' | 'conditional';
+    reason?: string;
+  }>;
 }
 
 export interface StructuredDocumentationResponse {
@@ -98,7 +111,6 @@ const INVENTED_FINDING_PATTERNS: { pattern: RegExp; requiresInput: RegExp; messa
   { pattern: /no visible injury(?: was noted)?/i, requiresInput: /visible injury|no visible injury|injury noted|bruise|laceration|abrasion|swelling/i, message: "Visible injury assessment not provided" },
 ];
 
-const INPUT_TIME_PATTERN = /\b(?:at\s+)?(\d{1,2}:\d{2}|\d{3,4}\b|\d{1,2}\s*(?:am|pm)\b)/i;
 const INPUT_REPORTER_PATTERN = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*(?:DSP|RN|LPN|CNA|QIDP|staff)\b/i;
 
 export function resolveTerminology(terminology?: string): string {
@@ -233,7 +245,7 @@ function sanitizeSection(text: string, input: string): { text: string; removed: 
 }
 
 function inputHasReportTime(input: string): boolean {
-  return INPUT_TIME_PATTERN.test(input);
+  return inputDocumentsEventTime(input);
 }
 
 function inputHasReporter(input: string): boolean {
@@ -241,11 +253,7 @@ function inputHasReporter(input: string): boolean {
 }
 
 function outputPreservesReportTime(input: string, output: string): boolean {
-  if (!inputHasReportTime(input)) return true;
-  const timeMatch = input.match(INPUT_TIME_PATTERN);
-  if (!timeMatch) return true;
-  const token = timeMatch[1].replace(/\s+/g, "").toLowerCase();
-  return output.replace(/\s+/g, "").toLowerCase().includes(token.replace(":", ""));
+  return outputIncludesDocumentedEventTime(input, output);
 }
 
 function outputPreservesReporter(input: string, output: string): boolean {
@@ -630,14 +638,31 @@ export function applyFacilityPlanEnrichment(
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
   templateOptions?: FacilityTemplateOptions,
+  terminology = 'resident',
 ): PlanEnrichmentResult | null {
   const resolvedTemplateOptions = resolveFacilityTemplateOptions(templateOptions);
+  const template = getFacilityFormTemplate(def, assessmentType);
+
+  parsed.soap = enrichFacilitySoapSections(
+    parsed.soap,
+    input,
+    def,
+    assessmentType,
+    template,
+    terminology,
+  );
+
   const enrichment = enrichFacilityPlanPrompts(
     parsed.soap.plan,
     input,
     def,
     assessmentType,
     { autoCompleteStaffEducation: resolvedTemplateOptions.autoCompleteStaffEducation },
+    {
+      subjective: parsed.soap.subjective,
+      objective: parsed.soap.objective,
+      assessment: parsed.soap.assessment,
+    },
   );
 
   parsed.soap.plan = enrichment.plan;
@@ -658,55 +683,23 @@ function reconcileQualityCheckCompleteness(
   parsed: StructuredDocumentationResponse,
   input: string,
   def: GuidelineDefinition,
+  assessmentType: AssessmentType,
   enrichment?: PlanEnrichmentResult | null,
 ): StructuredQualityCheckCompleteness {
-  const facts = extractClinicalFacts(input, def.id);
-  const provided = [...(parsed.qualityCheckCompleteness?.provided ?? [])];
-  const missing = [...(parsed.qualityCheckCompleteness?.missing ?? [])];
+  const deterministic = buildDocumentationQualityCheck({
+    input,
+    soap: parsed.soap,
+    def,
+    assessmentType,
+    enrichment,
+  });
 
-  const ensureProvided = (label: string, condition: boolean) => {
-    if (!condition) return;
-    if (!provided.some((item) => item.toLowerCase().includes(label.toLowerCase()))) {
-      provided.push(label);
-    }
-    for (let i = missing.length - 1; i >= 0; i--) {
-      if (missing[i].toLowerCase().includes(label.toLowerCase())) missing.splice(i, 1);
-    }
+  return {
+    provided: deterministic.provided,
+    missing: deterministic.missing,
+    scorePercent: deterministic.scorePercent,
+    categorizedMissing: deterministic.categorizedMissing,
   };
-
-  const ensureMissing = (label: string, condition: boolean) => {
-    if (!condition) return;
-    if (!missing.some((item) => item.toLowerCase().includes(label.toLowerCase()))) {
-      missing.push(label);
-    }
-    for (let i = provided.length - 1; i >= 0; i--) {
-      if (provided[i].toLowerCase().includes(label.toLowerCase())) provided.splice(i, 1);
-    }
-  };
-
-  if (facts.eventTime) ensureProvided(`Event time: ${facts.eventTime}`, true);
-  if (facts.reporterTitle) ensureProvided(`Reporter title: ${facts.reporterTitle}`, true);
-  if (facts.reporterName) ensureProvided(`Reporter name: ${facts.reporterName}`, true);
-  if (facts.headImpactLocation) ensureProvided("Head impact and location", true);
-  if (facts.mechanism) ensureProvided("Mechanism of injury", true);
-  if (facts.painDescription) ensureProvided(facts.painDescription, true);
-  if (facts.lossOfConsciousness === false) ensureProvided("No reported loss of consciousness", true);
-  if (facts.medications.length > 0) ensureProvided(`${facts.medications.join(", ")} use`, true);
-  if (facts.pupilAssessment) ensureProvided(facts.pupilAssessment, true);
-  if (facts.pirCompleted) ensureProvided("PIR completed", true);
-  if (facts.nursingInterventionsCompleted || enrichment?.nursingInterventionsSummary) {
-    ensureProvided("Nursing interventions completed", true);
-  }
-  if (enrichment?.staffEducationGenerated) {
-    ensureProvided("Staff education instructions generated", true);
-  }
-  if (enrichment?.staffUnderstandingConfirmed) {
-    ensureProvided("Staff verbalized or demonstrated understanding", true);
-  } else if (enrichment?.staffEducationGenerated || (enrichment?.reviewWarnings.length ?? 0) > 0) {
-    ensureMissing('Confirm whether DSP verbalized or demonstrated understanding.', true);
-  }
-
-  return { provided, missing };
 }
 
 function validateIndependentFacilityPromptLines(combined: string, prompts: string[]): string[] {
@@ -757,21 +750,28 @@ export function validateFacilityTemplatePreservation(
   const combined = [soap.subjective, soap.objective, soap.assessment, soap.plan].join('\n');
   const errors: string[] = [];
   const prompts = extractColonPromptsFromTemplate(template);
+  const subjectivePrompts = new Set(extractSubjectivePromptsFromTemplate(template));
+  const requiredPrompts = prompts.filter((prompt) => {
+    if (subjectivePrompts.has(prompt) && !subjectivePromptHasValue(soap.subjective, prompt)) {
+      return false;
+    }
+    return true;
+  });
 
   if (template.includes('See Interactive View Assessment.') && !/See Interactive View Assessment\.?/i.test(soap.objective)) {
     errors.push('OBJECTIVE must preserve "See Interactive View Assessment." on its own line');
   }
 
-  for (const prompt of prompts) {
+  for (const prompt of requiredPrompts) {
     if (!combined.includes(prompt)) {
       errors.push(`Required facility prompt missing from SOAP output: ${prompt}`);
     }
   }
 
-  errors.push(...validateIndependentFacilityPromptLines(combined, prompts));
+  errors.push(...validateIndependentFacilityPromptLines(combined, requiredPrompts));
 
   let lastIndex = -1;
-  for (const prompt of prompts) {
+  for (const prompt of requiredPrompts) {
     const index = combined.indexOf(prompt);
     if (index >= 0 && index < lastIndex) {
       errors.push(`Facility prompt order changed: ${prompt} appears out of template order`);
@@ -812,10 +812,18 @@ export function validateAiDocumentationOutput(
   assessmentType: AssessmentType,
   outputMode: DocumentationOutputMode = DEFAULT_DOCUMENTATION_OUTPUT_MODE,
   templateOptions?: FacilityTemplateOptions,
+  terminology = 'resident',
 ): AiValidationResult {
   let enrichment: PlanEnrichmentResult | null = null;
   if (isFacilityTemplateMode(outputMode)) {
-    enrichment = applyFacilityPlanEnrichment(parsed, input, def, assessmentType, templateOptions);
+    enrichment = applyFacilityPlanEnrichment(
+      parsed,
+      input,
+      def,
+      assessmentType,
+      templateOptions,
+      terminology,
+    );
   }
 
   const errors: string[] = [];
@@ -860,7 +868,7 @@ export function validateAiDocumentationOutput(
     errors.push(...validateFacilityTemplatePreservation(parsed.soap, def, assessmentType));
   }
 
-  const completeness = reconcileQualityCheckCompleteness(parsed, input, def, enrichment);
+  const completeness = reconcileQualityCheckCompleteness(parsed, input, def, assessmentType, enrichment);
 
   for (const missingItem of completeness.missing) {
     if (facts.eventTime && /report time|event time/i.test(missingItem)) {
@@ -920,8 +928,9 @@ export function validateStructuredDocumentation(
   input: string,
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
+  outputMode: DocumentationOutputMode = 'narrative_soap',
 ): ValidatedStructuredDocumentation {
-  const validation = validateAiDocumentationOutput(parsed, input, def, assessmentType);
+  const validation = validateAiDocumentationOutput(parsed, input, def, assessmentType, outputMode);
   return {
     soap: parsed.soap,
     soapText: formatSoapDocument(parsed.soap),

@@ -76,6 +76,12 @@ export interface QualityCheckItem {
 export interface DocumentationCompletenessCheck {
   provided: string[];
   missing: string[];
+  scorePercent?: number;
+  categorizedMissing?: Array<{
+    label: string;
+    category: 'facility_required' | 'clinically_useful' | 'conditional';
+    reason?: string;
+  }>;
 }
 
 export interface DocumentationGenerationMeta {

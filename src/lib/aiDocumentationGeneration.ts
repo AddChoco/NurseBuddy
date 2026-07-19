@@ -264,6 +264,7 @@ export async function generateAiDocumentationBundle(
     context.assessmentType,
     context.outputMode,
     context.templateOptions,
+    context.terminology,
   );
 
   if (!finalValidation.isValid) {
@@ -296,6 +297,7 @@ export async function generateAiDocumentationBundle(
       context.assessmentType,
       context.outputMode,
       context.templateOptions,
+      context.terminology,
     );
 
     if (!finalValidation.isValid && isFacilityTemplateMode(context.outputMode)) {
