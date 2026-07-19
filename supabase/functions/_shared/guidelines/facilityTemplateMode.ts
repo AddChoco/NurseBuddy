@@ -17,6 +17,20 @@ const ASSESSMENT_TYPE_PATTERNS: { type: AssessmentType; patterns: RegExp[] }[] =
   { type: 'return', patterns: [/return assessment/i, /transfer back/i, /returned from/i] },
 ];
 
+function inferFollowUpAssessmentType(clinicalText: string): AssessmentType | null {
+  if (/\bone emesis episode yesterday\b/i.test(clinicalText)) return 'follow_up';
+  if (/\blast elevated temperature\b/i.test(clinicalText) && /\bcurrent(?:ly)?\b/i.test(clinicalText)) {
+    return 'follow_up';
+  }
+  if (
+    /\bno nausea or further vomiting\b/i.test(clinicalText)
+    && /\b(?:emesis|vomit)/i.test(clinicalText)
+  ) {
+    return 'follow_up';
+  }
+  return null;
+}
+
 export function detectAssessmentType(clinicalText: string): AssessmentType {
   const text = clinicalText.toLowerCase();
   for (const entry of ASSESSMENT_TYPE_PATTERNS) {
@@ -24,7 +38,7 @@ export function detectAssessmentType(clinicalText: string): AssessmentType {
       return entry.type;
     }
   }
-  return 'other';
+  return inferFollowUpAssessmentType(clinicalText) ?? 'other';
 }
 
 const CLINICALLY_USEFUL_LABEL_PATTERNS = [

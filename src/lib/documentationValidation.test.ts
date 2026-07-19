@@ -107,4 +107,12 @@ describe('detectAssessmentType', () => {
   it('does not treat loose stool alone as resolution confirmation', () => {
     expect(detectAssessmentType('No loose stool during this shift.')).toBe('other');
   });
+
+  it('infers vomiting follow-up from prior episode and resolved symptoms', () => {
+    expect(
+      detectAssessmentType(
+        'One emesis episode yesterday at 1730 after dinner. No nausea or further vomiting. Sitting upright.',
+      ),
+    ).toBe('follow_up');
+  });
 });
