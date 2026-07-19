@@ -150,6 +150,16 @@ describe('templateLockMode', () => {
     expect(validation.errors.some((error) => /Scalar field currentTemperature/i.test(error))).toBe(true);
   });
 
+  it('accepts scalar last elevated temperature date/time formats', () => {
+    const schema = buildTemplateLockSchema(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up');
+    const values = emptyTemplateLockValues();
+    values.objective.lastElevatedTemperatureDateTime = '07/17/26 at 1800';
+    values.objective.currentTemperature = '98.4°F';
+    values.objective.temperatureRoute = 'Temporal';
+    const validation = validateTemplateLockValues(values, schema, ELEVATED_TEMP_FOLLOW_UP_INPUT);
+    expect(validation.errors.some((error) => /lastElevatedTemperatureDateTime/i.test(error))).toBe(false);
+  });
+
   it('keeps rendered template headings immutable', () => {
     const schema = buildTemplateLockSchema(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up');
     const template = getFacilityFormTemplate(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up');

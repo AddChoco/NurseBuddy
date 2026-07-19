@@ -310,9 +310,14 @@ function isScalarCompliant(value: string, field: TemplateLockField): boolean {
   if (!value) return true;
   const lower = field.label.toLowerCase();
 
-  if (lower.includes('temperature') && !lower.includes('route')) {
+  if (lower.includes('current temperature')) {
     return /^\d+(?:\.\d+)?\s*°?\s*[fc]?\s*$/i.test(value)
       || /^\d+(?:\.\d+)?°F$/i.test(value);
+  }
+
+  if (lower.includes('date and time of the last documented elevated temperature')) {
+    return /^\d{1,2}\/\d{1,2}\/\d{2,4}(?:\s+at\s+\d{3,4}|\s+\d{1,2}:\d{2})$/i.test(value.trim())
+      || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value.trim());
   }
 
   if (lower.includes('temperature route')) {
