@@ -5,6 +5,7 @@ import {
   getFacilityFormTemplate,
 } from './facilityFormTemplates.ts';
 import { isNegativeFillerValue } from './facilityTemplateSanitization.ts';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
 import {
   mergeTemplateLockValues,
   populateTemplateLockValuesFromInput,

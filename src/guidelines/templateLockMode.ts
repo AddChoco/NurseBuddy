@@ -5,6 +5,7 @@ import {
   getFacilityFormTemplate,
 } from './facilityFormTemplates';
 import { isNegativeFillerValue } from './facilityTemplateSanitization';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction';
 import {
   mergeTemplateLockValues,
   populateTemplateLockValuesFromInput,
