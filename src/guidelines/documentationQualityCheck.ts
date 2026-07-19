@@ -63,12 +63,7 @@ const SUPPLEMENTAL_CHECK_ITEMS: Array<{
     documentedLabel: 'Staff education documented',
     category: 'facility_required',
     isPresent: ({ facts, enrichment, soapText }) =>
-      Boolean(
-        facts.staffEducation
-        || enrichment?.staffUnderstandingConfirmed
-        || (enrichment?.staffUnderstandingValue && !/^pending/i.test(enrichment.staffUnderstandingValue)),
-      )
-      || new RegExp(`${STAFF_EDUCATION_PROMPT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*Staff verbalized`, 'i').test(soapText),
+      staffUnderstandingDocumented({ input: '', searchableText: '', soapText, facts, enrichment }),
   },
 ];
 
@@ -110,6 +105,30 @@ function isUnknownPlaceholder(value: string): boolean {
   return /^(unknown|n\/a|not documented|not reported|none)$/i.test(value.trim());
 }
 
+function stripTemplatePromptLabels(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !/^[^:\n]+:\s*$/.test(line.trim()))
+    .join('\n');
+}
+
+function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
+  const promptPattern = new RegExp(
+    `${STAFF_EDUCATION_PROMPT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([^\\n]+)`,
+    'i',
+  );
+  const match = context.soapText.match(promptPattern);
+  const promptValue = match?.[1]?.trim() ?? '';
+  if (promptValue && !isUnknownPlaceholder(promptValue)) return true;
+
+  if (context.enrichment?.staffUnderstandingConfirmed) return true;
+  if (context.enrichment?.staffUnderstandingValue && !/^pending/i.test(context.enrichment.staffUnderstandingValue)) {
+    return true;
+  }
+
+  return Boolean(context.facts.staffEducation);
+}
+
 function promptValuePresent(promptLabel: string, soapText: string): string | null {
   const pattern = new RegExp(`${promptLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([^\\n]+)`, 'i');
   const match = soapText.match(pattern);
@@ -124,10 +143,12 @@ function isFieldPresent(
   def: GuidelineDefinition,
   context: QualityCheckContext,
 ): boolean {
+  const evidenceText = stripTemplatePromptLabels(context.searchableText);
+
   if (/gastric bleeding/i.test(fieldLabel)) {
     const value = promptValuePresent('Gastric bleeding if suspected:', context.soapText);
     if (value) return true;
-    return /gastric bleeding|hematemesis|blood in vomit|coffee ground|no bleeding|without blood|bleeding (?:not|ruled out)/i.test(context.searchableText);
+    return /gastric bleeding|hematemesis|blood in vomit|coffee ground|bloody emesis|no bleeding|without blood|bleeding (?:not|ruled out)/i.test(evidenceText);
   }
 
   if (/enteral feeding rate/i.test(fieldLabel)) {
@@ -159,7 +180,7 @@ function isFieldPresent(
   }
 
   const keywords = getFieldMatchKeywords(def, fieldLabel);
-  return keywordPresent(keywords, context.searchableText, context.searchableText);
+  return keywordPresent(keywords, evidenceText.toLowerCase(), evidenceText);
 }
 
 function isFieldApplicable(
