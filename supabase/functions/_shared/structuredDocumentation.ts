@@ -657,9 +657,10 @@ export function applyFacilityPlanEnrichment(
 ): PlanEnrichmentResult | null {
   const resolvedTemplateOptions = resolveFacilityTemplateOptions(templateOptions);
   const template = getFacilityFormTemplate(def, assessmentType);
+  const templateLockMode = options?.skipSoapSectionEnrichment === true;
 
-  parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
-  if (!options?.skipSoapSectionEnrichment) {
+  if (!templateLockMode) {
+    parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
     parsed.soap = enrichFacilitySoapSections(
       parsed.soap,
       input,
@@ -684,7 +685,9 @@ export function applyFacilityPlanEnrichment(
   );
 
   parsed.soap.plan = enrichment.plan;
-  parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
+  if (!templateLockMode) {
+    parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
+  }
   return enrichment;
 }
 
