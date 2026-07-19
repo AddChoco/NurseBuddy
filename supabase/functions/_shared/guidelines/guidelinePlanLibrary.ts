@@ -1,13 +1,13 @@
 import type { GuidelineId } from './types.ts';
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
-import { lookupGuidelineDefinition } from './guidelineDefinitions';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
+import { lookupGuidelineDefinition } from './guidelineDefinitions.ts';
 import {
   extractPlanCompletionPrompts,
   extractPlanSectionLines,
   extractPlanStandingInstructions,
   getFacilityFormTemplate,
-} from './facilityFormTemplates';
+} from './facilityFormTemplates.ts';
 
 export interface GuidelinePlanLibraryEntry {
   /** Exact predefined plan lines from the facility fillable template PLAN section */

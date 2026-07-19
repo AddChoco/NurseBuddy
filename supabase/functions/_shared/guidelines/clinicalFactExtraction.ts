@@ -1,4 +1,4 @@
-import type { GuidelineId } from '../types';
+import type { GuidelineId } from './types.ts';
 
 /**
  * Structured clinical facts extracted deterministically from nurse input.
