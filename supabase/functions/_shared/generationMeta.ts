@@ -1,4 +1,4 @@
-export const EDGE_FUNCTION_VERSION = '2026-07-18-documentation-quality-v6';
+export const EDGE_FUNCTION_VERSION = '2026-07-18-negative-filler-guard-v7';
 export const TEMPLATE_MODE_LABEL = 'facility-template-v2';
 export const FACILITY_TEMPLATE_MODE_MARKER = 'FACILITY TEMPLATE COMPLETION MODE';
 

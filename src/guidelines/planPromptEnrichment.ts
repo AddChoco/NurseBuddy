@@ -53,7 +53,7 @@ function detectStaffEducationProvided(input: string): boolean {
   return STAFF_EDUCATION_PROVIDED_PATTERNS.some((pattern) => pattern.test(input));
 }
 
-function getPromptValue(
+export function getFacilityPromptValue(
   plan: string,
   prompt: string,
   standingInstructions: ReadonlySet<string> = new Set(),
@@ -90,7 +90,7 @@ function setPromptValue(
   const trimmedValue = value.trim();
   if (!trimmedValue) return plan;
 
-  const existing = getPromptValue(plan, prompt, standingInstructions);
+  const existing = getFacilityPromptValue(plan, prompt, standingInstructions);
   if (existing) return plan;
 
   const lines = plan.split('\n');
@@ -220,7 +220,7 @@ export function enrichFacilityPlanPrompts(
   }
 
   const staffUnderstandingConfirmed = detectStaffUnderstandingConfirmed(input);
-  if (staffEducationGenerated || staffUnderstandingConfirmed) {
+  if (staffUnderstandingConfirmed) {
     staffUnderstandingValue = ruleEvaluation.staffUnderstandingText;
     if (staffUnderstandingValue) {
       enrichedPlan = setPromptValue(
@@ -255,7 +255,7 @@ export function planDocumentsNursingInterventions(
     ? resolveNursingInterventionsPrompt(getFacilityFormTemplate(def, assessmentType))
     : NURSING_INTERVENTIONS_PROMPT;
   if (!prompt) return false;
-  const value = getPromptValue(plan, prompt, standingInstructions);
+  const value = getFacilityPromptValue(plan, prompt, standingInstructions);
   return Boolean(value && value.trim().length > 0);
 }
 
@@ -267,6 +267,6 @@ export function planDocumentsPirCompleted(
   const standingInstructions = def && assessmentType
     ? new Set(extractPlanStandingInstructions(getFacilityFormTemplate(def, assessmentType)))
     : new Set<string>();
-  const value = getPromptValue(plan, 'Post Injury Report (PIR) completed:', standingInstructions);
+  const value = getFacilityPromptValue(plan, 'Post Injury Report (PIR) completed:', standingInstructions);
   return Boolean(value && /completed/i.test(value));
 }

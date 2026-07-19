@@ -96,17 +96,15 @@ describe('guidelinePlanRuleEngine', () => {
     );
 
     expect(planDocumentsNursingInterventions(enrichment.plan, VOMITING_GUIDELINE, 'initial')).toBe(true);
-    expect(enrichment.plan).toMatch(
-      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding of vomiting monitoring, hydration, aspiration precautions, and reporting recurrent emesis\./,
-    );
+    expect(enrichment.plan).toMatch(/Staff verbalized or demonstrated understanding of instructions provided:\s*$/m);
   });
 
-  it('populates pain guideline staff understanding when the template includes the prompt', () => {
+  it('populates pain guideline staff understanding only when explicitly documented', () => {
     const template = getFacilityFormTemplate(PAIN_GUIDELINE, 'follow_up');
     const planSection = template.split('PLAN:')[1]?.trim() ?? '';
     const enrichment = enrichFacilityPlanPrompts(
       planSection,
-      'Resident reports pain 6/10. Pain assessment completed. Medication effectiveness evaluated. Comfort measures provided.',
+      `${PAIN_GUIDELINE.displayName} follow-up. Pain assessment completed. Medication effectiveness evaluated. Staff verbalized understanding of pain monitoring.`,
       PAIN_GUIDELINE,
       'follow_up',
       { autoCompleteStaffEducation: true },

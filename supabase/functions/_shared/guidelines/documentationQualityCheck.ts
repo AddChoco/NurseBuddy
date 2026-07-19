@@ -9,7 +9,10 @@ import { extractClinicalFacts } from './clinicalFactExtraction.ts';
 import { parseDocumentedEventTime } from './eventTimeParsing.ts';
 import { getFieldMatchKeywords } from './guidelineEngine.ts';
 import type { PlanEnrichmentResult } from './planPromptEnrichment.ts';
+import { getFacilityPromptValue } from './planPromptEnrichment.ts';
+import { extractPlanStandingInstructions, getFacilityFormTemplate } from './facilityFormTemplates.ts';
 import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode.ts';
+import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
 
 export interface CategorizedMissingItem {
   label: string;
@@ -44,26 +47,28 @@ const SUPPLEMENTAL_CHECK_ITEMS: Array<{
     label: 'Nursing interventions',
     documentedLabel: 'Nursing interventions documented',
     category: 'facility_required',
-    isPresent: ({ facts, soapText, enrichment }) =>
-      Boolean(
+    isPresent: ({ facts, soapText, enrichment }) => {
+      if (enrichment?.nursingInterventionsSummary) return true;
+      return Boolean(
         facts.nursingInterventionsCompleted
-        || enrichment?.nursingInterventionsSummary
-        || /nursing interventions completed:/i.test(soapText),
-      ),
+        && (/nursing interventions completed:\s*\n[^\n:]+/i.test(soapText)
+          || /nursing interventions completed:\s+\S/i.test(soapText)),
+      );
+    },
   },
   {
     label: 'Staff instructions',
-    documentedLabel: 'Staff instructions documented',
+    documentedLabel: 'DSP monitoring instructions included',
     category: 'clinically_useful',
     isPresent: ({ soapText }) =>
-      /staff instructed|dsp instructed|monitoring and reporting requirements|according to the .* guideline/i.test(soapText),
+      /\b(?:dsp\/staff|dsp|staff) instructed to monitor\b/i.test(soapText),
   },
   {
     label: 'Staff understanding confirmation',
-    documentedLabel: 'Staff education documented',
+    documentedLabel: 'Staff understanding confirmation documented',
     category: 'facility_required',
-    isPresent: ({ facts, enrichment, soapText }) =>
-      staffUnderstandingDocumented({ input: '', searchableText: '', soapText, facts, enrichment }),
+    isPresent: ({ facts, enrichment, planText, input, standingInstructions }) =>
+      staffUnderstandingDocumented({ input, searchableText: '', soapText: '', planText, facts, enrichment, standingInstructions }),
   },
 ];
 
@@ -71,8 +76,10 @@ interface QualityCheckContext {
   input: string;
   searchableText: string;
   soapText: string;
+  planText: string;
   facts: ReturnType<typeof extractClinicalFacts>;
   enrichment?: PlanEnrichmentResult | null;
+  standingInstructions: ReadonlySet<string>;
 }
 
 function normalizeSearchText(parts: string[]): string {
@@ -113,12 +120,11 @@ function stripTemplatePromptLabels(text: string): string {
 }
 
 function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
-  const promptPattern = new RegExp(
-    `${STAFF_EDUCATION_PROMPT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([^\\n]+)`,
-    'i',
+  const promptValue = getFacilityPromptValue(
+    context.planText,
+    STAFF_EDUCATION_PROMPT,
+    context.standingInstructions,
   );
-  const match = context.soapText.match(promptPattern);
-  const promptValue = match?.[1]?.trim() ?? '';
   if (promptValue && !isUnknownPlaceholder(promptValue)) return true;
 
   if (context.enrichment?.staffUnderstandingConfirmed) return true;
@@ -126,14 +132,16 @@ function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
     return true;
   }
 
-  return Boolean(context.facts.staffEducation);
+  return detectStaffUnderstandingConfirmed(context.input);
 }
 
-function promptValuePresent(promptLabel: string, soapText: string): string | null {
-  const pattern = new RegExp(`${promptLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([^\\n]+)`, 'i');
-  const match = soapText.match(pattern);
-  if (!match) return null;
-  const value = match[1]?.trim() ?? '';
+function promptValuePresent(
+  promptLabel: string,
+  planText: string,
+  standingInstructions: ReadonlySet<string>,
+): string | null {
+  const prompt = promptLabel.endsWith(':') ? promptLabel : `${promptLabel}:`;
+  const value = getFacilityPromptValue(planText, prompt, standingInstructions);
   if (!value || isUnknownPlaceholder(value)) return null;
   return value;
 }
@@ -146,18 +154,18 @@ function isFieldPresent(
   const evidenceText = stripTemplatePromptLabels(context.searchableText);
 
   if (/gastric bleeding/i.test(fieldLabel)) {
-    const value = promptValuePresent('Gastric bleeding if suspected:', context.soapText);
+    const value = promptValuePresent('Gastric bleeding if suspected:', context.soapText, context.standingInstructions);
     if (value) return true;
     return /gastric bleeding|hematemesis|blood in vomit|coffee ground|bloody emesis|no bleeding|without blood|bleeding (?:not|ruled out)/i.test(evidenceText);
   }
 
   if (/enteral feeding rate/i.test(fieldLabel)) {
-    const value = promptValuePresent('Enteral feeding rate:', context.soapText);
+    const value = promptValuePresent('Enteral feeding rate:', context.soapText, context.standingInstructions);
     if (value) return true;
   }
 
   if (/positioning per pnmp/i.test(fieldLabel)) {
-    const value = promptValuePresent('Positioning per PNMP:', context.soapText);
+    const value = promptValuePresent('Positioning per PNMP:', context.soapText, context.standingInstructions);
     if (value) return true;
     return /upright|positioned|positioning|pnmp|head of bed|hob|side lying|semi-fowler|fowler/i.test(context.searchableText);
   }
@@ -175,7 +183,7 @@ function isFieldPresent(
   ];
 
   for (const prompt of promptCandidates) {
-    const value = promptValuePresent(prompt, context.soapText);
+    const value = promptValuePresent(prompt, context.soapText, context.standingInstructions);
     if (value) return true;
   }
 
@@ -219,14 +227,17 @@ export function buildDocumentationQualityCheck(args: {
   enrichment?: PlanEnrichmentResult | null;
 }): DocumentationQualityCheckResult {
   const combinedSoap = [args.soap.subjective, args.soap.objective, args.soap.assessment, args.soap.plan].join('\n');
+  const standingInstructions = new Set(extractPlanStandingInstructions(getFacilityFormTemplate(args.def, args.assessmentType)));
   const searchableText = normalizeSearchText([args.input, combinedSoap]);
   const facts = extractClinicalFacts(args.input, args.def.id);
   const context: QualityCheckContext = {
     input: args.input,
     searchableText,
     soapText: combinedSoap,
+    planText: args.soap.plan,
     facts,
     enrichment: args.enrichment,
+    standingInstructions,
   };
 
   const provided: string[] = [];

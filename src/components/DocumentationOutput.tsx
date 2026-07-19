@@ -156,16 +156,46 @@ export function DocumentationOutput({
                     Required information still missing
                   </h5>
                   <ul className="space-y-1">
-                    {(qualityCheck.completeness.categorizedMissing ?? qualityCheck.completeness.missing.map((label) => ({
+              {(qualityCheck.completeness.categorizedMissing ?? qualityCheck.completeness.missing.map((label) => ({
                       label,
                       category: 'facility_required' as const,
-                    }))).map((item) => (
-                      <li key={item.label} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
-                        <span className="mt-0.5">{item.category === 'clinically_useful' ? '○' : '⚠'}</span>
+                    })))
+                      .filter((item) => item.category === 'facility_required')
+                      .map((item) => (
+                      <li key={`required-${item.label}`} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
+                        <span className="mt-0.5">⚠</span>
                         <span>
                           {item.label}
                           {item.reason ? `, ${item.reason}` : ''}
                         </span>
+                      </li>
+                    ))}
+
+                  {(qualityCheck.completeness.categorizedMissing ?? [])
+                    .filter((item) => item.category === 'conditional')
+                    .map((item) => (
+                      <li key={`conditional-${item.label}`} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
+                        <span className="mt-0.5">⚠</span>
+                        <span>
+                          {item.label}
+                          {item.reason ? `, ${item.reason}` : ''}
+                        </span>
+                      </li>
+                    ))}
+
+                  {(qualityCheck.completeness.categorizedMissing ?? [])
+                    .filter((item) => item.category === 'clinically_useful')
+                    .map((item) => (
+                      <li key={`helpful-${item.label}`} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
+                        <span className="mt-0.5">○</span>
+                        <span>{item.label}</span>
+                      </li>
+                    ))}
+
+                  {!qualityCheck.completeness.categorizedMissing && qualityCheck.completeness.missing.map((message) => (
+                      <li key={message} className="flex items-start gap-2 text-sm text-blue-700 dark:text-blue-400/80">
+                        <span className="mt-0.5">⚠</span>
+                        <span>{message}</span>
                       </li>
                     ))}
                   </ul>

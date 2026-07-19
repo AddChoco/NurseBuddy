@@ -36,6 +36,12 @@ import {
   getFacilityFormTemplate,
 } from '../guidelines/facilityFormTemplates';
 import { buildDocumentationQualityCheck } from '../guidelines/documentationQualityCheck';
+import {
+  buildNegativeFillerProhibitionBlock,
+  buildValidationScanText,
+  detectNegativeFillerClaims,
+  sanitizeFacilityTemplateSections,
+} from '../guidelines/facilityTemplateSanitization';
 
 export interface StructuredSoap {
   subjective: string;
@@ -423,7 +429,10 @@ Rewrite Subjective into professional nursing language — do not copy raw dictat
 When required assessment information is not supplied anywhere in the input:
 - do not fabricate a result
 - keep the facility prompt visible and leave the value blank
-- list the specific missing item in qualityCheck.missing`
+- list the specific missing item in qualityCheck.missing
+- never write "not provided", "unknown", "unable to determine", or similar negative filler in the note
+
+${buildNegativeFillerProhibitionBlock()}`
     : `ACCURACY — COMPLETED FINDINGS ONLY:
 You MUST NOT invent completed assessments, observed findings, patient responses, notifications, or interventions that are not supported by the narrative.
 
@@ -549,12 +558,14 @@ export function buildPass2ReviewInstructions(
 - Leave unsupported colon prompts visible with blank values
 - Preserve every standing facility Plan instruction exactly as written in the template
 - Rewrite Subjective into professional nursing language — do not leave raw dictation
-- Use professional nursing narrative inside prompt values, especially in Objective; synthesize supported findings from the full input; never write "unknown" when information exists elsewhere
+- Use professional nursing narrative inside prompt values, especially in Objective; synthesize supported findings from the full input
 - Infer only routine nursing assessments under Nursing interventions completed when clearly implied
-- Auto-complete routine DSP staff education when enabled
+- Generate DSP/staff monitoring instructions when required; do not auto-complete staff understanding unless explicitly documented
 - Expand SBAR Situation and Assessment with supported detail — avoid one-line summaries
 - Do not convert the SOAP sections into unstructured narrative paragraphs without prompt labels
-- Only correct omissions, contradictions, merged prompts, invented medications/treatments, invented completed notifications, or unsupported content`
+- Only correct omissions, contradictions, merged prompts, invented medications/treatments, invented completed notifications, or unsupported content
+
+${buildNegativeFillerProhibitionBlock()}`
     : `Fix omissions, contradictions, invented completed findings, and incomplete Plan/SBAR content.
 Keep natural professional nursing language.
 Do not shorten the note unnecessarily.
@@ -607,6 +618,8 @@ ${args.sourceNarrative}
 FULL GUIDELINE TEMPLATE:
 ${args.guidelineTemplate}
 ${templateReminder}
+${buildNegativeFillerProhibitionBlock()}
+
 DRAFT JSON:
 ${args.draftJson}
 
@@ -643,6 +656,7 @@ export function applyFacilityPlanEnrichment(
   const resolvedTemplateOptions = resolveFacilityTemplateOptions(templateOptions);
   const template = getFacilityFormTemplate(def, assessmentType);
 
+  parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
   parsed.soap = enrichFacilitySoapSections(
     parsed.soap,
     input,
@@ -666,16 +680,34 @@ export function applyFacilityPlanEnrichment(
   );
 
   parsed.soap.plan = enrichment.plan;
+  parsed.soap = sanitizeFacilityTemplateSections(parsed.soap, def, assessmentType, input);
   return enrichment;
 }
 
-function detectInventedFindings(text: string, input: string): string[] {
+function detectInventedFindings(
+  sections: FacilityTemplateSections,
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  extraSections: string[] = [],
+): string[] {
   const errors: string[] = [];
+  const validationText = buildValidationScanText(sections, def, assessmentType, extraSections);
+  const combinedText = [
+    sections.subjective,
+    sections.objective,
+    sections.assessment,
+    sections.plan,
+    ...extraSections,
+  ].join('\n');
+
   for (const rule of INVENTED_FINDING_PATTERNS) {
-    if (!rule.pattern.test(text)) continue;
+    if (!rule.pattern.test(validationText)) continue;
     if (rule.requiresInput.test(input)) continue;
     errors.push(`Unsupported completed finding or action added: ${rule.message}`);
   }
+
+  errors.push(...detectNegativeFillerClaims(combinedText));
   return errors;
 }
 
@@ -861,7 +893,18 @@ export function validateAiDocumentationOutput(
     errors.push('Supplied nursing interventions completed status is missing from the Plan');
   }
 
-  errors.push(...detectInventedFindings(combinedOutput, input));
+  errors.push(...detectInventedFindings(
+    parsed.soap,
+    input,
+    def,
+    assessmentType,
+    [
+      parsed.sbar?.situation,
+      parsed.sbar?.background,
+      parsed.sbar?.assessment,
+      parsed.sbar?.recommendation,
+    ].filter(Boolean) as string[],
+  ));
 
   if (isFacilityTemplateMode(outputMode)) {
     errors.push(...validatePlanAgainstLibrary(parsed.soap.plan, def.id, assessmentType));

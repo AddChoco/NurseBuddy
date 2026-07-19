@@ -59,11 +59,9 @@ describe('planPromptEnrichment', () => {
     expect(enrichment.plan).toMatch(
       /DSP\/staff instructed to monitor[\s\S]*\nStaff verbalized or demonstrated understanding of instructions provided:/,
     );
-    expect(enrichment.staffUnderstandingValue).toBe(
-      'Staff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements.',
-    );
-    expect(enrichment.plan).toMatch(
-      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding of neurological monitoring, fall precautions, delayed symptom reporting, and provider notification requirements\./,
+    expect(enrichment.staffUnderstandingValue).toBeNull();
+    expect(enrichment.plan).not.toMatch(
+      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding of/i,
     );
   });
 
@@ -102,10 +100,10 @@ describe('planPromptEnrichment', () => {
 
     expect(planDocumentsNursingInterventions(parsed.soap.plan, FALL_GUIDELINE, 'follow_up')).toBe(true);
     expect(validation.completeness.provided).toContain('Nursing interventions documented');
-    expect(validation.completeness.provided).toContain('Staff education documented');
-    expect(validation.completeness.provided).toContain('Staff instructions documented');
-    expect(validation.completeness.missing).not.toContain('Confirm whether DSP verbalized or demonstrated understanding.');
-    expect(parsed.soap.plan).toContain('Staff verbalized understanding of neurological monitoring');
+    expect(validation.completeness.provided).toContain('DSP monitoring instructions included');
+    expect(validation.completeness.missing).toContain('Staff understanding confirmation not documented');
+    expect(parsed.soap.plan).not.toContain('Staff verbalized understanding of neurological monitoring');
+    expect(validation.errors.some((error) => /Unsupported completed finding/i.test(error))).toBe(false);
     expect(validation.errors.some((error) => /missing from the Plan/i.test(error))).toBe(false);
   });
 
