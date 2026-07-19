@@ -1,6 +1,6 @@
-import type { GuidelineDefinition } from '../guidelines/types';
-import { detectAssessmentType, type AssessmentType } from '../guidelines/facilityTemplateMode';
-import type { DocumentationOutputMode } from '../guidelines/facilityTemplateMode';
+import type { GuidelineDefinition } from './guidelines/types.ts';
+import { detectAssessmentType, type AssessmentType } from './guidelines/facilityTemplateMode.ts';
+import type { DocumentationOutputMode } from './guidelines/facilityTemplateMode.ts';
 import {
   DEFAULT_DOCUMENTATION_OUTPUT_MODE,
   FACILITY_TEMPLATE_COMPLETION_DIRECTIVE,
@@ -10,32 +10,32 @@ import {
   isFacilityTemplateMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
-} from '../guidelines/facilityTemplateMode';
+} from './guidelines/facilityTemplateMode.ts';
 import {
   buildGuidelineContextBlock,
   getAssessmentInstructionsForType,
   getDocumentationTypeInstructions,
-} from '../guidelines/guidelineEngine';
-import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
-import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
-import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from '../guidelines/eventTimeParsing';
-import { validatePlanAgainstLibrary } from '../guidelines/guidelinePlanLibrary';
+} from './guidelines/guidelineEngine.ts';
+import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
+import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
+import { inputDocumentsEventTime, outputIncludesDocumentedEventTime } from './guidelines/eventTimeParsing.ts';
+import { validatePlanAgainstLibrary } from './guidelines/guidelinePlanLibrary.ts';
 import {
   enrichFacilityPlanPrompts,
   planDocumentsNursingInterventions,
   planDocumentsPirCompleted,
   type PlanEnrichmentResult,
-} from '../guidelines/planPromptEnrichment';
+} from './guidelines/planPromptEnrichment.ts';
 import {
   enrichFacilitySoapSections,
   extractSubjectivePromptsFromTemplate,
   subjectivePromptHasValue,
-} from '../guidelines/soapSectionEnrichment';
+} from './guidelines/soapSectionEnrichment.ts';
 import {
   extractColonPromptsFromTemplate,
   getFacilityFormTemplate,
-} from '../guidelines/facilityFormTemplates';
-import { buildDocumentationQualityCheck } from '../guidelines/documentationQualityCheck';
+} from './guidelines/facilityFormTemplates.ts';
+import { buildDocumentationQualityCheck } from './guidelines/documentationQualityCheck.ts';
 
 export interface StructuredSoap {
   subjective: string;

@@ -1,7 +1,7 @@
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
-import { extractClinicalFacts, formatReporterLead } from './clinicalFactExtraction';
-import { parseDocumentedEventTime } from './eventTimeParsing';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
+import { extractClinicalFacts, formatReporterLead } from './clinicalFactExtraction.ts';
+import { parseDocumentedEventTime } from './eventTimeParsing.ts';
 interface SoapSections {
   subjective: string;
   objective: string;

@@ -1,19 +1,19 @@
-import type { GuidelineId } from '../types';
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
+import type { GuidelineId } from './types.ts';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
 import {
   detectNursingInterventionsCompleted,
   extractClinicalFacts,
   type ClinicalFacts,
-} from './clinicalFactExtraction';
+} from './clinicalFactExtraction.ts';
 import {
   extractPlanStandingInstructions,
   getFacilityFormTemplate,
-} from './facilityFormTemplates';
+} from './facilityFormTemplates.ts';
 import {
   extractDocumentedPositioning,
   orderNursingInterventions,
-} from './interventionSequencing';
+} from './interventionSequencing.ts';
 
 export interface PlanEnrichmentInput {
   subjective?: string;

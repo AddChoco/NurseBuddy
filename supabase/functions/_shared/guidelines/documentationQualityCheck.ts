@@ -1,15 +1,15 @@
-import type { GuidelineDefinition } from './types';
-import type { AssessmentType } from './facilityTemplateMode';
+import type { GuidelineDefinition } from './types.ts';
+import type { AssessmentType } from './facilityTemplateMode.ts';
 import {
   inferMissingInfoCategory,
   shouldCheckMissingField,
-} from './facilityTemplateMode';
-import type { MissingInfoCategory } from './types';
-import { extractClinicalFacts } from './clinicalFactExtraction';
-import { parseDocumentedEventTime } from './eventTimeParsing';
-import { getFieldMatchKeywords } from './guidelineEngine';
-import type { PlanEnrichmentResult } from './planPromptEnrichment';
-import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode';
+} from './facilityTemplateMode.ts';
+import type { MissingInfoCategory } from './types.ts';
+import { extractClinicalFacts } from './clinicalFactExtraction.ts';
+import { parseDocumentedEventTime } from './eventTimeParsing.ts';
+import { getFieldMatchKeywords } from './guidelineEngine.ts';
+import type { PlanEnrichmentResult } from './planPromptEnrichment.ts';
+import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode.ts';
 
 export interface CategorizedMissingItem {
   label: string;
