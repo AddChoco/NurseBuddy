@@ -1,8 +1,10 @@
 import type { GuidelineDefinition } from './types';
 import type { AssessmentType } from './facilityTemplateMode';
 import type { TemplateLockSchema, TemplateLockValues } from './templateLockMode';
+import { renderTemplateLockSoap } from './templateLockMode';
 import {
   buildSuggestedStaffInstruction,
+  buildStaffInstructionHelperDisplay,
   detectStaffInstructionProvided,
   detectStaffUnderstandingMethod,
   parseStructuredBoolean,
@@ -12,13 +14,45 @@ import {
 } from './staffEducationLibrary';
 import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction';
 
-export interface FinalizeStaffEducationOptions {
-  autoGenerateStaffInstructionContent: boolean;
+export interface NurseStaffEducationConfirmations {
+  instructionProvided?: boolean;
+  understandingConfirmed?: boolean;
 }
 
-const DEFAULT_FINALIZE_OPTIONS: Required<FinalizeStaffEducationOptions> = {
+export interface FinalizeStaffEducationOptions {
+  autoGenerateStaffInstructionContent: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions: boolean;
+  nurseConfirmations?: NurseStaffEducationConfirmations;
+}
+
+const DEFAULT_FINALIZE_OPTIONS: Required<Omit<FinalizeStaffEducationOptions, 'nurseConfirmations'>> = {
   autoGenerateStaffInstructionContent: true,
+  autoConfirmStaffInstructionFromNursingInterventions: false,
 };
+
+function resolveStaffInstructionProvided(
+  input: string,
+  values: TemplateLockValues,
+  options: FinalizeStaffEducationOptions,
+): boolean {
+  if (options.nurseConfirmations?.instructionProvided === true) return true;
+  if (options.nurseConfirmations?.instructionProvided === false) return false;
+  if (parseStructuredBoolean(values.plan.staffInstructionProvided)) return true;
+  return detectStaffInstructionProvided(input, {
+    autoConfirmFromNursingInterventions: options.autoConfirmStaffInstructionFromNursingInterventions,
+  });
+}
+
+function resolveStaffUnderstandingConfirmed(
+  input: string,
+  values: TemplateLockValues,
+  options: FinalizeStaffEducationOptions,
+): boolean {
+  if (options.nurseConfirmations?.understandingConfirmed === true) return true;
+  if (options.nurseConfirmations?.understandingConfirmed === false) return false;
+  if (parseStructuredBoolean(values.plan.staffUnderstandingConfirmed)) return true;
+  return detectStaffUnderstandingConfirmed(input);
+}
 
 export function finalizeStaffEducationValues(
   values: TemplateLockValues,
@@ -40,16 +74,15 @@ export function finalizeStaffEducationValues(
     ? resolved.instructionText
     : values.plan.staffInstructionContent?.trim() || resolved.instructionText;
 
-  const inputIndicatesProvision = detectStaffInstructionProvided(input);
-  const aiIndicatesProvision = parseStructuredBoolean(values.plan.staffInstructionProvided);
-  const staffInstructionProvided = aiIndicatesProvision || inputIndicatesProvision;
+  let staffInstructionProvided = resolveStaffInstructionProvided(input, values, resolvedOptions);
+  const staffUnderstandingConfirmed = resolveStaffUnderstandingConfirmed(input, values, resolvedOptions);
 
-  const inputConfirmsUnderstanding = detectStaffUnderstandingConfirmed(input);
-  const aiConfirmsUnderstanding = parseStructuredBoolean(values.plan.staffUnderstandingConfirmed);
-  const staffUnderstandingConfirmed = aiConfirmsUnderstanding || inputConfirmsUnderstanding;
+  if (staffUnderstandingConfirmed && resolvedOptions.nurseConfirmations?.instructionProvided !== false) {
+    staffInstructionProvided = true;
+  }
 
-  const staffUnderstandingMethod = staffUnderstandingConfirmed
-    ? values.plan.staffUnderstandingMethod?.trim() || detectStaffUnderstandingMethod(input)
+  const staffUnderstandingMethod = staffInstructionProvided && staffUnderstandingConfirmed
+    ? values.plan.staffUnderstandingMethod?.trim() || detectStaffUnderstandingMethod(input) || 'verbalized'
     : '';
 
   values.plan.staffInstructionContent = instructionContent;
@@ -59,14 +92,16 @@ export function finalizeStaffEducationValues(
   values.plan.staffEducationRuleId = resolved.rule.guidelineId;
 
   if (hasStaffPrompt) {
-    values.plan.staffUnderstandingConfirmation = staffUnderstandingConfirmed
-      ? renderStaffUnderstandingConfirmationLine(instructionContent, staffUnderstandingMethod)
-      : '';
+    values.plan.staffUnderstandingConfirmation =
+      staffInstructionProvided && staffUnderstandingConfirmed
+        ? renderStaffUnderstandingConfirmationLine(instructionContent, staffUnderstandingMethod)
+        : '';
   }
 
   const suggestedStaffInstruction = buildSuggestedStaffInstruction(
     instructionContent,
     staffInstructionProvided,
+    staffUnderstandingConfirmed,
   );
 
   return {
@@ -76,6 +111,7 @@ export function finalizeStaffEducationValues(
     staffUnderstandingMethod,
     staffEducationRuleId: resolved.rule.guidelineId,
     suggestedStaffInstruction,
+    instructionHelperDisplay: buildStaffInstructionHelperDisplay(instructionContent),
     requiresManualReview: resolved.requiresManualReview,
   };
 }
@@ -96,7 +132,67 @@ export function readStaffEducationStructuredState(
     suggestedStaffInstruction: buildSuggestedStaffInstruction(
       staffInstructionContent,
       staffInstructionProvided,
+      staffUnderstandingConfirmed,
     ),
+    instructionHelperDisplay: buildStaffInstructionHelperDisplay(staffInstructionContent),
     requiresManualReview: false,
+  };
+}
+
+export function applyNurseStaffEducationConfirmations(
+  values: TemplateLockValues,
+  schema: TemplateLockSchema,
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  nurseConfirmations: NurseStaffEducationConfirmations,
+  options?: Omit<FinalizeStaffEducationOptions, 'nurseConfirmations'>,
+): StaffEducationStructuredState {
+  return finalizeStaffEducationValues(values, schema, input, def, assessmentType, {
+    ...DEFAULT_FINALIZE_OPTIONS,
+    ...options,
+    nurseConfirmations,
+  });
+}
+
+export function rerenderTemplateLockSoapWithStaffEducation(args: {
+  values: TemplateLockValues;
+  schema: TemplateLockSchema;
+  input: string;
+  def: GuidelineDefinition;
+  assessmentType: AssessmentType;
+  nurseConfirmations: NurseStaffEducationConfirmations;
+  autoGenerateStaffInstructionContent?: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
+}): {
+  values: TemplateLockValues;
+  soap: ReturnType<typeof renderTemplateLockSoap>;
+  staffEducation: StaffEducationStructuredState;
+} {
+  const workingValues = {
+    subjective: { ...args.values.subjective },
+    objective: { ...args.values.objective },
+    assessment: { ...args.values.assessment },
+    plan: { ...args.values.plan },
+  };
+
+  const staffEducation = finalizeStaffEducationValues(
+    workingValues,
+    args.schema,
+    args.input,
+    args.def,
+    args.assessmentType,
+    {
+      autoGenerateStaffInstructionContent: args.autoGenerateStaffInstructionContent ?? true,
+      autoConfirmStaffInstructionFromNursingInterventions:
+        args.autoConfirmStaffInstructionFromNursingInterventions ?? false,
+      nurseConfirmations: args.nurseConfirmations,
+    },
+  );
+
+  return {
+    values: workingValues,
+    soap: renderTemplateLockSoap(args.schema, workingValues),
+    staffEducation,
   };
 }

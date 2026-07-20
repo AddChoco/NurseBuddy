@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Copy, Check, RefreshCw, Pencil, Save, FileText, AlertCircle } from 'lucide-react';
-import type { GeneratedDocument, MissingInfoItem, DocumentationQualityCheck, DocumentationGenerationMeta } from '../types';
+import type {
+  GeneratedDocument,
+  MissingInfoItem,
+  DocumentationQualityCheck,
+  DocumentationGenerationMeta,
+  NurseStaffEducationConfirmations,
+  StaffEducationState,
+  TemplateLockClientContext,
+} from '../types';
+import { StaffEducationPostResultPanel } from './StaffEducationPanel';
 
 interface DocumentationOutputProps {
   documents: GeneratedDocument[];
@@ -9,6 +18,10 @@ interface DocumentationOutputProps {
   generationMeta?: DocumentationGenerationMeta | null;
   showRuntimeDebug?: boolean;
   onRegenerate: () => void;
+  templateLockContext?: TemplateLockClientContext | null;
+  staffEducation?: StaffEducationState | null;
+  nurseConfirmations?: NurseStaffEducationConfirmations;
+  onNurseConfirmationsChange?: (next: NurseStaffEducationConfirmations) => void;
 }
 
 export function DocumentationOutput({
@@ -18,6 +31,10 @@ export function DocumentationOutput({
   generationMeta,
   showRuntimeDebug = false,
   onRegenerate,
+  templateLockContext = null,
+  staffEducation = null,
+  nurseConfirmations = { instructionProvided: false, understandingConfirmed: false },
+  onNurseConfirmationsChange,
 }: DocumentationOutputProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -250,6 +267,15 @@ export function DocumentationOutput({
             ))}
           </ul>
         </div>
+      )}
+
+      {onNurseConfirmationsChange && (
+        <StaffEducationPostResultPanel
+          templateLockContext={templateLockContext}
+          staffEducation={staffEducation}
+          nurseConfirmations={nurseConfirmations}
+          onNurseConfirmationsChange={onNurseConfirmationsChange}
+        />
       )}
 
       <div className="mt-4 flex flex-wrap gap-2.5">

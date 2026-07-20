@@ -1,4 +1,4 @@
-import type { GuidelineDefinition } from '../guidelines/types';
+import type { GuidelineDefinition } from './guidelines/types.ts';
 import {
   detectAssessmentType,
   type AssessmentType,
@@ -9,23 +9,23 @@ import {
   resolveDocumentationOutputMode,
   resolveFacilityTemplateOptions,
   type FacilityTemplateOptions,
-} from '../guidelines/facilityTemplateMode';
+} from './guidelines/facilityTemplateMode.ts';
 import {
   buildGuidelineContextBlock,
   getAssessmentInstructionsForType,
   getDocumentationTypeInstructions,
-} from '../guidelines/guidelineEngine';
-import { lookupGuidelineByDisplayName } from '../guidelines/guidelineDefinitions';
-import { buildGuidelinePlanLibraryBlock } from '../guidelines/guidelinePlanLibrary';
-import { buildFillableTemplateBlock, getFacilityFormTemplate } from '../guidelines/facilityFormTemplates';
-import { extractClinicalFacts } from '../guidelines/clinicalFactExtraction';
+} from './guidelines/guidelineEngine.ts';
+import { lookupGuidelineByDisplayName } from './guidelines/guidelineDefinitions.ts';
+import { buildGuidelinePlanLibraryBlock } from './guidelines/guidelinePlanLibrary.ts';
+import { buildFillableTemplateBlock, getFacilityFormTemplate } from './guidelines/facilityFormTemplates.ts';
+import { extractClinicalFacts } from './guidelines/clinicalFactExtraction.ts';
 import {
   assertFacilityTemplateInstructionsPresent,
   buildGenerationMeta,
   EDGE_FUNCTION_VERSION,
   FACILITY_TEMPLATE_MODE_MARKER,
   type GenerationMeta,
-} from './generationMeta';
+} from './generationMeta.ts';
 import {
   parseStructuredDocumentation,
   formatSoapDocument,
@@ -34,12 +34,13 @@ import {
   type StructuredDocumentationResponse,
   type ValidatedStructuredDocumentation,
   validateAiDocumentationOutput,
+  validateTemplateLockSbarOutput,
   buildPass1GenerationInstructions,
   buildPass1GenerationUserPrompt,
   buildPass2ReviewInstructions,
   buildPass2ReviewUserPrompt,
   toDocumentationQualityCheck,
-} from './structuredDocumentation';
+} from './structuredDocumentation.ts';
 import {
   buildTemplateLockPass1Instructions,
   buildTemplateLockPass1UserPrompt,
@@ -48,10 +49,24 @@ import {
   buildTemplateLockSchema,
   emptyTemplateLockValues,
   parseTemplateLockResponse,
-  parseTemplateLockSbar,
   type TemplateLockValues,
-} from '../guidelines/templateLockMode';
-import { buildTemplateLockDocumentation } from '../guidelines/templateLockPopulation';
+} from './guidelines/templateLockMode.ts';
+import {
+  buildTemplateLockSbarPass1Instructions,
+  buildTemplateLockSbarPass1UserPrompt,
+  buildTemplateLockSbarPass2Instructions,
+  buildTemplateLockSbarPass2UserPrompt,
+  parseTemplateLockSbarResponse,
+  renderTemplateLockSbar,
+} from './guidelines/templateLockSbarMode.ts';
+import { buildTemplateLockDocumentation } from './guidelines/templateLockPopulation.ts';
+import { buildTemplateLockSbarDocumentation } from './guidelines/templateLockSbarPopulation.ts';
+import { buildTemplateLockClientBundle } from './templateLockClient.ts';
+
+export interface NurseStaffEducationConfirmations {
+  instructionProvided?: boolean;
+  understandingConfirmed?: boolean;
+}
 
 export interface PromptDebugInfo {
   facilityTemplateMode: boolean;
@@ -135,6 +150,7 @@ export interface AiGenerationContext {
   guidelineTemplate: string;
   fillableTemplateText: string;
   templateOptions: ReturnType<typeof resolveFacilityTemplateOptions>;
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations;
 }
 
 export function buildAiGenerationContext(
@@ -145,6 +161,7 @@ export function buildAiGenerationContext(
   includeSbar: boolean,
   outputMode?: DocumentationOutputMode,
   templateOptions?: FacilityTemplateOptions,
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations,
 ): AiGenerationContext {
   const def = lookupGuidelineByDisplayName(guidelineDisplayName);
   if (!def) {
@@ -169,6 +186,7 @@ export function buildAiGenerationContext(
     fillableTemplateText: getFacilityFormTemplate(def, assessmentType),
     guidelineTemplate: buildCompleteGuidelineTemplateBlock(def, assessmentType, resolvedOutputMode),
     templateOptions: resolveFacilityTemplateOptions(templateOptions),
+    nurseStaffEducationConfirmations,
   };
 }
 
@@ -206,22 +224,21 @@ function finalizeValidatedResult(
   };
 }
 
-async function runTemplateLockGeneration(
+async function runTemplateLockSoapGeneration(
   callOpenAI: (instructions: string, input: string, temperature?: number) => Promise<string>,
   context: AiGenerationContext,
-  includeSbar: boolean,
 ): Promise<{
   parsed: StructuredDocumentationResponse;
   pass2Ran: boolean;
   templateLockValues: TemplateLockValues;
   templateLockSchema: ReturnType<typeof buildTemplateLockSchema>;
+  templateLockClientBundle: ReturnType<typeof buildTemplateLockClientBundle>;
 }> {
   const schema = buildTemplateLockSchema(context.def, context.assessmentType);
   const pass1Instructions = buildTemplateLockPass1Instructions(
     context.def,
     context.terminology,
     context.assessmentType,
-    includeSbar,
   );
   const pass1Input = buildTemplateLockPass1UserPrompt(context.clinicalInfo, context.supplementText);
   const pass1Raw = await callOpenAI(pass1Instructions, pass1Input, 0.35);
@@ -236,6 +253,10 @@ async function runTemplateLockGeneration(
     def: context.def,
     assessmentType: context.assessmentType,
     terminology: context.terminology,
+    autoGenerateStaffInstructionContent: context.templateOptions.autoCompleteStaffEducation,
+    autoConfirmStaffInstructionFromNursingInterventions:
+      context.templateOptions.autoConfirmStaffInstructionFromNursingInterventions,
+    nurseStaffEducationConfirmations: context.nurseStaffEducationConfirmations,
   });
 
   const needsPass2 =
@@ -264,6 +285,10 @@ async function runTemplateLockGeneration(
       def: context.def,
       assessmentType: context.assessmentType,
       terminology: context.terminology,
+      autoGenerateStaffInstructionContent: context.templateOptions.autoCompleteStaffEducation,
+      autoConfirmStaffInstructionFromNursingInterventions:
+        context.templateOptions.autoConfirmStaffInstructionFromNursingInterventions,
+      nurseStaffEducationConfirmations: context.nurseStaffEducationConfirmations,
     });
 
     if (
@@ -281,10 +306,8 @@ async function runTemplateLockGeneration(
     }
   }
 
-  const sbar = includeSbar ? parseTemplateLockSbar(workingRaw) : null;
   const parsed: StructuredDocumentationResponse = {
     soap: built.soap,
-    sbar,
     qualityCheckCompleteness: { provided: [], missing: [] },
   };
 
@@ -293,6 +316,103 @@ async function runTemplateLockGeneration(
     pass2Ran,
     templateLockValues: built.values,
     templateLockSchema: schema,
+    templateLockClientBundle: buildTemplateLockClientBundle({
+      guidelineId: context.def.id,
+      assessmentType: context.assessmentType,
+      combinedInput: context.combinedInput,
+      terminology: context.terminology,
+      values: built.values,
+      staffEducation: built.staffEducation,
+    }),
+  };
+}
+
+async function runTemplateLockSbarGeneration(
+  callOpenAI: (instructions: string, input: string, temperature?: number) => Promise<string>,
+  context: AiGenerationContext,
+  soapValues: TemplateLockValues,
+  soapSchema: ReturnType<typeof buildTemplateLockSchema>,
+): Promise<{
+  sbar: NonNullable<StructuredDocumentationResponse['sbar']>;
+  pass2Ran: boolean;
+}> {
+  const structuredFieldValues = { fieldValues: soapValues };
+  const pass1Instructions = buildTemplateLockSbarPass1Instructions(
+    context.def,
+    context.terminology,
+    context.assessmentType,
+  );
+  const pass1Input = buildTemplateLockSbarPass1UserPrompt({
+    clinicalInfo: context.clinicalInfo,
+    supplementText: context.supplementText,
+    structuredFieldValues,
+  });
+  const pass1Raw = await callOpenAI(pass1Instructions, pass1Input, 0.35);
+
+  let pass2Ran = false;
+  let workingRaw = pass1Raw;
+  let parseResult = parseTemplateLockSbarResponse(workingRaw);
+  let built = buildTemplateLockSbarDocumentation({
+    aiValues: parseResult.values,
+    input: context.combinedInput,
+    def: context.def,
+    assessmentType: context.assessmentType,
+    terminology: context.terminology,
+    soapValues,
+    schema: soapSchema,
+  });
+
+  const needsPass2 =
+    parseResult.errors.length > 0
+    || parseResult.unknownKeys.length > 0
+    || built.validationErrors.length > 0;
+
+  if (needsPass2) {
+    pass2Ran = true;
+    const pass2Instructions = buildTemplateLockSbarPass2Instructions(
+      context.def,
+      context.assessmentType,
+    );
+    const pass2Input = buildTemplateLockSbarPass2UserPrompt({
+      sourceNarrative: context.combinedInput,
+      structuredFieldValues,
+      draftValues: built.values,
+      validationErrors: [
+        ...parseResult.errors,
+        ...parseResult.unknownKeys.map((key) => `Unknown key: ${key}`),
+        ...built.validationErrors,
+      ],
+    });
+    workingRaw = await callOpenAI(pass2Instructions, pass2Input, 0.2);
+    parseResult = parseTemplateLockSbarResponse(workingRaw);
+    built = buildTemplateLockSbarDocumentation({
+      aiValues: parseResult.values,
+      input: context.combinedInput,
+      def: context.def,
+      assessmentType: context.assessmentType,
+      terminology: context.terminology,
+      soapValues,
+      schema: soapSchema,
+    });
+
+    if (
+      parseResult.errors.length > 0
+      || parseResult.unknownKeys.length > 0
+      || built.validationErrors.length > 0
+    ) {
+      throw new Error(
+        `SBAR template lock validation failed after pass 2: ${[
+          ...parseResult.errors,
+          ...parseResult.unknownKeys.map((key) => `Unknown key: ${key}`),
+          ...built.validationErrors,
+        ].join(' | ')}`,
+      );
+    }
+  }
+
+  return {
+    sbar: renderTemplateLockSbar(built.values),
+    pass2Ran,
   };
 }
 
@@ -305,11 +425,13 @@ export async function generateAiDocumentationBundle(
   includeSbar: boolean,
   outputMode?: DocumentationOutputMode,
   templateOptions?: FacilityTemplateOptions,
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations,
 ): Promise<{
   validated: ValidatedStructuredDocumentation;
   qualityCheck: ReturnType<typeof toDocumentationQualityCheck>;
   generationMeta: GenerationMeta;
   pass2Ran: boolean;
+  templateLockClientBundle?: ReturnType<typeof buildTemplateLockClientBundle>;
 }> {
   const context = buildAiGenerationContext(
     guidelineDisplayName,
@@ -319,6 +441,7 @@ export async function generateAiDocumentationBundle(
     includeSbar,
     outputMode,
     templateOptions,
+    nurseStaffEducationConfirmations,
   );
 
   if (isFacilityTemplateMode(context.outputMode)) {
@@ -326,7 +449,6 @@ export async function generateAiDocumentationBundle(
       context.def,
       context.terminology,
       context.assessmentType,
-      includeSbar,
     );
     const templateLockPass1Input = buildTemplateLockPass1UserPrompt(
       context.clinicalInfo,
@@ -344,13 +466,12 @@ export async function generateAiDocumentationBundle(
       promptLength: templateLockPass1Instructions.length,
     });
 
-    const templateLockResult = await runTemplateLockGeneration(
+    const templateLockResult = await runTemplateLockSoapGeneration(
       callOpenAI,
       context,
-      includeSbar,
     );
-    const finalValidation = validateAiDocumentationOutput(
-      templateLockResult.parsed,
+    const soapValidation = validateAiDocumentationOutput(
+      { ...templateLockResult.parsed, sbar: undefined },
       context.combinedInput,
       context.def,
       context.assessmentType,
@@ -364,14 +485,51 @@ export async function generateAiDocumentationBundle(
       },
     );
 
-    if (!finalValidation.isValid) {
+    if (!soapValidation.isValid) {
       throw new Error(
-        `Facility template validation failed after template lock render: ${finalValidation.errors.join(' | ')}`,
+        `Facility template validation failed after SOAP template lock render: ${soapValidation.errors.join(' | ')}`,
       );
     }
 
+    let sbarResult: Awaited<ReturnType<typeof runTemplateLockSbarGeneration>> | null = null;
+    let sbarValidation = null;
+    if (includeSbar) {
+      sbarResult = await runTemplateLockSbarGeneration(
+        callOpenAI,
+        context,
+        templateLockResult.templateLockValues,
+        templateLockResult.templateLockSchema,
+      );
+      sbarValidation = validateTemplateLockSbarOutput(
+        sbarResult.sbar,
+        context.combinedInput,
+        context.def,
+        context.assessmentType,
+      );
+
+      if (!sbarValidation.isValid) {
+        throw new Error(
+          `Facility template validation failed after SBAR template lock render: ${sbarValidation.errors.join(' | ')}`,
+        );
+      }
+    }
+
+    const mergedParsed: StructuredDocumentationResponse = {
+      ...templateLockResult.parsed,
+      sbar: sbarResult?.sbar,
+    };
+    const finalValidation = {
+      ...soapValidation,
+      isValid: soapValidation.isValid && (sbarValidation?.isValid ?? true),
+      errors: [...soapValidation.errors, ...(sbarValidation?.errors ?? [])],
+      qualityCheckItems: [
+        ...soapValidation.qualityCheckItems,
+        ...(sbarValidation?.qualityCheckItems ?? []),
+      ],
+    };
+
     const validated = finalizeValidatedResult(
-      templateLockResult.parsed,
+      mergedParsed,
       context.combinedInput,
       context.def,
       context.assessmentType,
@@ -381,7 +539,7 @@ export async function generateAiDocumentationBundle(
       guideline: context.def.displayName,
       assessmentType: context.assessmentType,
       facilityInstructionsIncluded: true,
-      pass2Ran: templateLockResult.pass2Ran,
+      pass2Ran: templateLockResult.pass2Ran || Boolean(sbarResult?.pass2Ran),
       fillableTemplateIncluded: true,
     });
 
@@ -389,7 +547,8 @@ export async function generateAiDocumentationBundle(
       validated,
       qualityCheck: toDocumentationQualityCheck(validated, finalValidation),
       generationMeta,
-      pass2Ran: templateLockResult.pass2Ran,
+      pass2Ran: templateLockResult.pass2Ran || Boolean(sbarResult?.pass2Ran),
+      templateLockClientBundle: templateLockResult.templateLockClientBundle,
     };
   }
 

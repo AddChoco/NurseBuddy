@@ -6,6 +6,9 @@ import type {
   GenerationOptions,
   DocumentationQualityCheck,
   DocumentationGenerationMeta,
+  NurseStaffEducationConfirmations,
+  StaffEducationState,
+  TemplateLockClientContext,
 } from '../types';
 import { GUIDELINES, SOAP_OUTPUT_LABEL, getOptionalOutputLabel } from '../constants';
 import { stripMarkdown } from './structuredDocumentation';
@@ -36,6 +39,8 @@ interface GenerateRequest {
   supplements: { label: string; value: string }[];
   terminology: string;
   autoCompleteStaffEducation?: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations;
 }
 
 interface GenerateResponse {
@@ -43,6 +48,8 @@ interface GenerateResponse {
   documents?: GeneratedDocument[];
   qualityCheck?: DocumentationQualityCheck;
   generationMeta?: DocumentationGenerationMeta;
+  templateLockContext?: TemplateLockClientContext;
+  staffEducation?: StaffEducationState;
   error?: string;
 }
 
@@ -149,7 +156,14 @@ export async function generateDocumentationViaAPI(
   supplements: MissingInfoItem[],
   terminology: Terminology,
   options: GenerationOptions,
-): Promise<{ documentation: string; documents: GeneratedDocument[]; qualityCheck: DocumentationQualityCheck; generationMeta?: DocumentationGenerationMeta }> {
+): Promise<{
+  documentation: string;
+  documents: GeneratedDocument[];
+  qualityCheck: DocumentationQualityCheck;
+  generationMeta?: DocumentationGenerationMeta;
+  templateLockContext?: TemplateLockClientContext;
+  staffEducation?: StaffEducationState;
+}> {
   const guideline = GUIDELINES.find((g) => g.id === guidelineId)?.label ?? guidelineId;
   const additionalOutputs = buildAdditionalOutputs(options);
   const supplementsPayload = buildSupplementsPayload(supplements);
@@ -162,6 +176,9 @@ export async function generateDocumentationViaAPI(
     supplements: supplementsPayload,
     terminology,
     autoCompleteStaffEducation: options.autoCompleteStaffEducation,
+    autoConfirmStaffInstructionFromNursingInterventions:
+      options.autoConfirmStaffInstructionFromNursingInterventions,
+    nurseStaffEducationConfirmations: options.nurseStaffEducationConfirmations,
   };
 
   const data = await callGenerateDocumentation(body);
@@ -203,5 +220,7 @@ export async function generateDocumentationViaAPI(
       messages: [],
     },
     generationMeta: data.generationMeta,
+    templateLockContext: data.templateLockContext,
+    staffEducation: data.staffEducation,
   };
 }

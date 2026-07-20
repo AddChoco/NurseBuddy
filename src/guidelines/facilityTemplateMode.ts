@@ -153,17 +153,24 @@ export function isFacilityTemplateMode(mode?: string | null): boolean {
 export interface FacilityTemplateOptions {
   /** When true (default), auto-generate guideline-specific staff instruction content. Does not confirm understanding. */
   autoCompleteStaffEducation?: boolean;
+  /** When true, "nursing interventions completed" may set staff instruction provided — never understanding. */
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
 }
 
 export const DEFAULT_FACILITY_TEMPLATE_OPTIONS: Required<FacilityTemplateOptions> = {
   autoCompleteStaffEducation: true,
+  autoConfirmStaffInstructionFromNursingInterventions: false,
 };
 
 export function resolveFacilityTemplateOptions(
   options?: FacilityTemplateOptions,
 ): Required<FacilityTemplateOptions> {
   return {
-    autoCompleteStaffEducation: options?.autoCompleteStaffEducation ?? DEFAULT_FACILITY_TEMPLATE_OPTIONS.autoCompleteStaffEducation,
+    autoCompleteStaffEducation:
+      options?.autoCompleteStaffEducation ?? DEFAULT_FACILITY_TEMPLATE_OPTIONS.autoCompleteStaffEducation,
+    autoConfirmStaffInstructionFromNursingInterventions:
+      options?.autoConfirmStaffInstructionFromNursingInterventions
+      ?? DEFAULT_FACILITY_TEMPLATE_OPTIONS.autoConfirmStaffInstructionFromNursingInterventions,
   };
 }
 

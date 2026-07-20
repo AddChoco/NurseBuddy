@@ -54,8 +54,10 @@ export interface Settings {
   theme: ThemeMode;
   terminology: Terminology;
   language: Language;
-  /** Auto-complete standard staff education documentation when nursing instructions are generated. */
+  /** Auto-generate guideline-specific staff instruction content from the library. */
   autoCompleteStaffEducation: boolean;
+  /** When enabled, "nursing interventions completed" may confirm staff instruction was provided. */
+  autoConfirmStaffInstructionFromNursingInterventions: boolean;
 }
 
 export type MissingInfoCategory = 'facility_required' | 'clinically_useful' | 'conditional';
@@ -113,4 +115,28 @@ export interface GenerationOptions {
   includeProviderNotification: boolean;
   includeLarEmail: boolean;
   autoCompleteStaffEducation?: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations;
+}
+
+export interface NurseStaffEducationConfirmations {
+  instructionProvided: boolean;
+  understandingConfirmed: boolean;
+}
+
+export interface StaffEducationState {
+  staffInstructionContent: string;
+  staffInstructionProvided: boolean;
+  staffUnderstandingConfirmed: boolean;
+  staffUnderstandingMethod: string;
+  suggestedStaffInstruction: string | null;
+  instructionHelperDisplay: string;
+}
+
+export interface TemplateLockClientContext {
+  guidelineId: GuidelineId;
+  assessmentType: string;
+  combinedInput: string;
+  terminology: string;
+  values: Record<string, unknown>;
 }

@@ -18,8 +18,9 @@ import {
 } from './templateLockMode';
 import {
   finalizeStaffEducationValues,
-  type StaffEducationStructuredState,
+  type NurseStaffEducationConfirmations,
 } from './staffEducationTemplateLock';
+import type { StaffEducationStructuredState } from './staffEducationLibrary';
 import {
   buildGuidelineSubjectiveTrigger,
   isInvalidSubjectiveAssessmentTrigger,
@@ -64,12 +65,19 @@ function finalizeStructuredTemplateLockValues(
   def: GuidelineDefinition,
   assessmentType: AssessmentType,
   terminology: string,
-  autoGenerateStaffInstructionContent = true,
+  staffEducationOptions: {
+    autoGenerateStaffInstructionContent: boolean;
+    autoConfirmStaffInstructionFromNursingInterventions: boolean;
+    nurseConfirmations?: NurseStaffEducationConfirmations;
+  },
 ): StaffEducationStructuredState {
   ensureEnteralFeedingRateValue(values, schema, input);
   ensureSubjectiveAssessmentTrigger(values, input, def, assessmentType, terminology);
   return finalizeStaffEducationValues(values, schema, input, def, assessmentType, {
-    autoGenerateStaffInstructionContent,
+    autoGenerateStaffInstructionContent: staffEducationOptions.autoGenerateStaffInstructionContent,
+    autoConfirmStaffInstructionFromNursingInterventions:
+      staffEducationOptions.autoConfirmStaffInstructionFromNursingInterventions,
+    nurseConfirmations: staffEducationOptions.nurseConfirmations,
   });
 }
 
@@ -389,6 +397,8 @@ export function buildTemplateLockDocumentation(args: {
   assessmentType: AssessmentType;
   terminology: string;
   autoGenerateStaffInstructionContent?: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
+  nurseStaffEducationConfirmations?: NurseStaffEducationConfirmations;
 }): {
   values: TemplateLockValues;
   schema: TemplateLockSchema;
@@ -412,7 +422,12 @@ export function buildTemplateLockDocumentation(args: {
     args.def,
     args.assessmentType,
     args.terminology,
-    args.autoGenerateStaffInstructionContent ?? true,
+    {
+      autoGenerateStaffInstructionContent: args.autoGenerateStaffInstructionContent ?? true,
+      autoConfirmStaffInstructionFromNursingInterventions:
+        args.autoConfirmStaffInstructionFromNursingInterventions ?? false,
+      nurseConfirmations: args.nurseStaffEducationConfirmations,
+    },
   );
   const validation = validateTemplateLockValues(mergedValues, args.schema, args.input);
   const soap = renderTemplateLockSoap(args.schema, validation.values);

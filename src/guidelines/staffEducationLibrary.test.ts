@@ -13,11 +13,12 @@ import {
   detectStaffInstructionProvided,
   getGuidelineIdsWithoutStaffEducationRules,
   getStaffEducationRule,
-  NURSING_INTERVENTIONS_COMPLETED_INDICATES_STAFF_INSTRUCTION_PROVIDED,
   resolveStaffInstructionContent,
   STAFF_EDUCATION_RULES,
 } from './staffEducationLibrary';
+import { rerenderTemplateLockSoapWithStaffEducation } from './staffEducationTemplateLock';
 import { validateAiDocumentationOutput } from '../lib/structuredDocumentation';
+import { rerenderSoapWithNurseStaffEducation } from '../lib/templateLockClient';
 
 const ASSESSMENT_TYPES: AssessmentType[] = ['initial', 'follow_up', 'resolution', 'other'];
 
@@ -34,6 +35,9 @@ const FALL_FOLLOW_UP_INPUT =
 
 const HEAD_INJURY_INPUT =
   'At 1545, DSP reported head injury. Individual denies worsening headache. Nursing interventions completed. Staff verbalized understanding of neurological monitoring.';
+
+const VOMITING_INSTRUCTION =
+  'Monitor for recurrent vomiting, nausea, coughing or respiratory symptoms associated with aspiration, abdominal pain or distention, decreased intake or output, dehydration, or signs of gastric bleeding, and report changes to the nurse immediately.';
 
 describe('staffEducationLibrary', () => {
   it('covers every registered guideline with a non-empty rule', () => {
@@ -63,13 +67,17 @@ describe('staffEducationLibrary', () => {
     expect(rows.every((row) => row.ruleFound)).toBe(true);
   });
 
-  it('uses explicit nursing-interventions-completed provision rule', () => {
-    expect(NURSING_INTERVENTIONS_COMPLETED_INDICATES_STAFF_INSTRUCTION_PROVIDED).toBe(true);
-    expect(detectStaffInstructionProvided('Nursing interventions completed.')).toBe(true);
+  it('does not auto-confirm instruction provision from nursing interventions by default', () => {
+    expect(detectStaffInstructionProvided('Nursing interventions completed.')).toBe(false);
+    expect(
+      detectStaffInstructionProvided('Nursing interventions completed.', {
+        autoConfirmFromNursingInterventions: true,
+      }),
+    ).toBe(true);
     expect(detectStaffInstructionProvided('Resident resting comfortably.')).toBe(false);
   });
 
-  it('does not auto-confirm understanding from nursing interventions completed', () => {
+  it('generates vomiting education and leaves confirmation blank before nurse confirmation', () => {
     const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
     const built = buildTemplateLockDocumentation({
       schema,
@@ -80,10 +88,8 @@ describe('staffEducationLibrary', () => {
       terminology: 'individual',
     });
 
-    expect(built.staffEducation.staffInstructionContent).toBe(
-      'Monitor for recurrent vomiting, nausea, aspiration symptoms, decreased intake/output, dehydration, abdominal changes, or gastric bleeding and report changes to the nurse immediately.',
-    );
-    expect(built.staffEducation.staffInstructionProvided).toBe(true);
+    expect(built.staffEducation.staffInstructionContent).toBe(VOMITING_INSTRUCTION);
+    expect(built.staffEducation.staffInstructionProvided).toBe(false);
     expect(built.staffEducation.staffUnderstandingConfirmed).toBe(false);
     expect(built.soap.plan).toContain(
       'Staff verbalized or demonstrated understanding of instructions provided:',
@@ -91,10 +97,29 @@ describe('staffEducationLibrary', () => {
     expect(built.soap.plan).not.toMatch(
       /Staff verbalized or demonstrated understanding of instructions provided:\n(?:Staff verbalized|Unable to assess)/,
     );
-    expect(built.staffEducation.suggestedStaffInstruction).toBeNull();
+    expect(built.staffEducation.suggestedStaffInstruction).toContain('recurrent vomiting');
   });
 
-  it('populates understanding confirmation only when explicitly supported', () => {
+  it('auto-confirms instruction provision from nursing interventions when setting enabled', () => {
+    const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
+    const built = buildTemplateLockDocumentation({
+      schema,
+      aiValues: emptyTemplateLockValues(),
+      input: VOMITING_WITH_NURSING_INPUT,
+      def: VOMITING_GUIDELINE,
+      assessmentType: 'follow_up',
+      terminology: 'individual',
+      autoConfirmStaffInstructionFromNursingInterventions: true,
+    });
+
+    expect(built.staffEducation.staffInstructionProvided).toBe(true);
+    expect(built.staffEducation.staffUnderstandingConfirmed).toBe(false);
+    expect(built.soap.plan).not.toMatch(
+      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized/i,
+    );
+  });
+
+  it('populates understanding confirmation only when explicitly supported or nurse-confirmed', () => {
     const schema = buildTemplateLockSchema(HEAD_INJURY_GUIDELINE, 'initial');
     const built = buildTemplateLockDocumentation({
       schema,
@@ -111,6 +136,41 @@ describe('staffEducationLibrary', () => {
     );
   });
 
+  it('one-click nurse confirmation rerenders guideline-specific understanding without full regeneration', () => {
+    const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
+    const built = buildTemplateLockDocumentation({
+      schema,
+      aiValues: emptyTemplateLockValues(),
+      input: VOMITING_FOLLOW_UP_INPUT,
+      def: VOMITING_GUIDELINE,
+      assessmentType: 'follow_up',
+      terminology: 'individual',
+    });
+
+    const rerendered = rerenderSoapWithNurseStaffEducation({
+      context: {
+        guidelineId: 'vomiting',
+        assessmentType: 'follow_up',
+        combinedInput: VOMITING_FOLLOW_UP_INPUT,
+        terminology: 'individual',
+        values: built.values as unknown as Record<string, unknown>,
+      },
+      nurseConfirmations: {
+        instructionProvided: true,
+        understandingConfirmed: true,
+      },
+      autoGenerateStaffInstructionContent: true,
+      autoConfirmStaffInstructionFromNursingInterventions: false,
+    });
+
+    expect(rerendered.soapText).toMatch(
+      /Staff verbalized understanding of instructions to monitor for recurrent vomiting/i,
+    );
+    expect(rerendered.soapText).not.toContain('Unable to assess staff understanding');
+    expect(rerendered.qualityCheck.completeness?.provided).toContain('Staff instruction provided');
+    expect(rerendered.qualityCheck.completeness?.provided).toContain('Staff understanding confirmed');
+  });
+
   it('renders elevated temperature follow-up staff education from facility standing instruction', () => {
     const schema = buildTemplateLockSchema(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up');
     const built = buildTemplateLockDocumentation({
@@ -120,6 +180,7 @@ describe('staffEducationLibrary', () => {
       def: ELEVATED_TEMPERATURE_GUIDELINE,
       assessmentType: 'follow_up',
       terminology: 'resident',
+      autoConfirmStaffInstructionFromNursingInterventions: true,
     });
 
     expect(built.staffEducation.staffInstructionContent).toMatch(
@@ -128,6 +189,19 @@ describe('staffEducationLibrary', () => {
     expect(built.staffEducation.staffInstructionProvided).toBe(true);
     expect(built.staffEducation.staffUnderstandingConfirmed).toBe(false);
     expect(built.soap.plan).not.toContain('Unable to assess staff understanding');
+  });
+
+  it('renders distinct education content for vomiting, elevated temperature, fall, and head injury', () => {
+    const vomiting = resolveStaffInstructionContent(VOMITING_GUIDELINE, 'follow_up').instructionText;
+    const elevated = resolveStaffInstructionContent(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up').instructionText;
+    const fall = resolveStaffInstructionContent(FALL_GUIDELINE, 'follow_up').instructionText;
+    const headInjury = resolveStaffInstructionContent(HEAD_INJURY_GUIDELINE, 'initial').instructionText;
+
+    expect(vomiting).toMatch(/recurrent vomiting|vomiting/i);
+    expect(elevated).toMatch(/temperature|chills|fatigue/i);
+    expect(fall).toMatch(/pain, swelling, bruising/i);
+    expect(headInjury).toMatch(/level of consciousness|headache|neurological/i);
+    expect(new Set([vomiting, elevated, fall, headInjury]).size).toBe(4);
   });
 
   it('renders fall follow-up monitoring content from configured rule', () => {
@@ -144,23 +218,24 @@ describe('staffEducationLibrary', () => {
       def: FALL_GUIDELINE,
       assessmentType: 'follow_up',
       terminology: 'individual',
+      autoConfirmStaffInstructionFromNursingInterventions: true,
     });
     expect(built.staffEducation.staffInstructionContent).toMatch(/pain, swelling, bruising/i);
   });
 
-  it('flags missing understanding in quality check without unable-to-assess filler', () => {
+  it('uses consolidated quality check warnings without duplicate staff education items', () => {
     const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
     const built = buildTemplateLockDocumentation({
       schema,
       aiValues: emptyTemplateLockValues(),
-      input: VOMITING_WITH_NURSING_INPUT,
+      input: VOMITING_FOLLOW_UP_INPUT,
       def: VOMITING_GUIDELINE,
       assessmentType: 'follow_up',
       terminology: 'individual',
     });
 
     const completeness = buildDocumentationQualityCheck({
-      input: VOMITING_WITH_NURSING_INPUT,
+      input: VOMITING_FOLLOW_UP_INPUT,
       soap: built.soap,
       def: VOMITING_GUIDELINE,
       assessmentType: 'follow_up',
@@ -168,10 +243,17 @@ describe('staffEducationLibrary', () => {
       templateLockSchema: schema,
     });
 
-    expect(completeness.provided).toContain('Staff instruction content generated');
-    expect(completeness.provided).toContain('Staff instruction provided');
-    expect(completeness.missing).toContain('Staff understanding confirmation not documented');
-    expect(completeness.provided).not.toContain('Staff understanding confirmed');
+    expect(completeness.provided).toContain('Guideline-specific staff instruction generated');
+    expect(completeness.provided).not.toContain('Staff instruction provided');
+    expect(completeness.missing).toContain('Confirm whether instruction was provided and understood');
+    expect(completeness.missing).not.toContain('Staff instruction provision not documented');
+    expect(completeness.missing).not.toContain('Staff understanding confirmation not documented');
+    expect(
+      completeness.categorizedMissing?.filter((item) =>
+        item.label === 'Confirm whether instruction was provided and understood'
+        || item.label === 'Staff instruction documented; understanding confirmation needed',
+      ),
+    ).toHaveLength(1);
   });
 
   it('validates vomiting regression through structured documentation pipeline', () => {
@@ -201,9 +283,30 @@ describe('staffEducationLibrary', () => {
     );
 
     expect(built.values.plan.staffInstructionContent).toContain('recurrent vomiting');
-    expect(built.values.plan.staffInstructionProvided).toBe('true');
+    expect(built.values.plan.staffInstructionProvided).toBe('false');
     expect(built.values.plan.staffUnderstandingConfirmed).toBe('false');
-    expect(validation.completeness?.missing).toContain('Staff understanding confirmation not documented');
+    expect(validation.completeness?.missing).toContain('Confirm whether instruction was provided and understood');
     expect(built.soap.plan).not.toContain('Unable to assess staff understanding');
+  });
+
+  it('rerenders template lock SOAP in place via structured staff education values', () => {
+    const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
+    const values = emptyTemplateLockValues();
+    const rerendered = rerenderTemplateLockSoapWithStaffEducation({
+      values,
+      schema,
+      input: VOMITING_FOLLOW_UP_INPUT,
+      def: VOMITING_GUIDELINE,
+      assessmentType: 'follow_up',
+      nurseConfirmations: {
+        instructionProvided: true,
+        understandingConfirmed: true,
+      },
+    });
+
+    expect(rerendered.soap.plan).toMatch(
+      /Staff verbalized understanding of instructions to monitor for recurrent vomiting/i,
+    );
+    expect(rerendered.soap.plan).toContain('Nursing interventions completed:');
   });
 });

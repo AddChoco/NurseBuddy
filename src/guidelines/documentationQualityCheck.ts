@@ -72,51 +72,6 @@ const SUPPLEMENTAL_CHECK_ITEMS: Array<{
       );
     },
   },
-  {
-    label: 'Staff instruction content generated',
-    documentedLabel: 'Staff instruction content generated',
-    category: 'clinically_useful',
-    isPresent: ({ templateLockValues, soapText, enrichment }) => {
-      if (templateLockValues?.plan.staffInstructionContent?.trim()) return true;
-      if (enrichment?.staffEducationInstruction) return true;
-      if (enrichment?.staffEducationGenerated) return true;
-      return /\b(?:dsp\/staff|dsp|staff) instructed to monitor\b/i.test(soapText);
-    },
-    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
-      Boolean(
-        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
-        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
-      ),
-  },
-  {
-    label: 'Staff instruction provided',
-    documentedLabel: 'Staff instruction provided',
-    category: 'facility_required',
-    isPresent: ({ templateLockValues, enrichment, input, soapText }) => {
-      if (templateLockValues) {
-        return parseStructuredBoolean(templateLockValues.plan.staffInstructionProvided);
-      }
-      if (enrichment?.staffEducationInstruction) return true;
-      if (/\b(?:staff|dsp) instructed\b/i.test(soapText)) return true;
-      return /\b(?:staff|dsp) instructed\b|\bnursing interventions completed\b/i.test(input);
-    },
-    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
-      Boolean(
-        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
-        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
-      ),
-  },
-  {
-    label: 'Staff understanding confirmation',
-    documentedLabel: 'Staff understanding confirmed',
-    category: 'facility_required',
-    isPresent: (context) => staffUnderstandingDocumented(context),
-    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
-      Boolean(
-        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
-        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
-      ),
-  },
 ];
 
 interface QualityCheckContext {
@@ -168,6 +123,85 @@ function stripTemplatePromptLabels(text: string): string {
     .split('\n')
     .filter((line) => !/^[^:\n]+:\s*$/.test(line.trim()))
     .join('\n');
+}
+
+function staffEducationPromptApplicable(context: QualityCheckContext): boolean {
+  if (context.templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')) {
+    return true;
+  }
+  return getFacilityFormTemplate(context.def, context.assessmentType).includes(STAFF_EDUCATION_PROMPT);
+}
+
+function resolveStaffEducationQualityState(context: QualityCheckContext): {
+  contentGenerated: boolean;
+  instructionProvided: boolean;
+  understandingConfirmed: boolean;
+} {
+  if (context.templateLockValues) {
+    const state = readStaffEducationStructuredState(context.templateLockValues);
+    return {
+      contentGenerated: Boolean(state.staffInstructionContent),
+      instructionProvided: state.staffInstructionProvided,
+      understandingConfirmed: state.staffUnderstandingConfirmed,
+    };
+  }
+
+  const instructionProvided = Boolean(
+    context.enrichment?.staffEducationInstruction
+    || /\b(?:staff|dsp) instructed\b/i.test(context.soapText)
+    || /\b(?:staff|dsp) instructed\b/i.test(context.input),
+  );
+  const understandingConfirmed =
+    context.enrichment?.staffUnderstandingConfirmed
+    || staffUnderstandingDocumented(context);
+
+  return {
+    contentGenerated:
+      instructionProvided
+      || Boolean(context.enrichment?.staffEducationGenerated)
+      || /\b(?:dsp\/staff|dsp|staff) instructed to monitor\b/i.test(context.soapText),
+    instructionProvided,
+    understandingConfirmed,
+  };
+}
+
+function trackStaffEducationQualityCheck(
+  context: QualityCheckContext,
+  provided: string[],
+  categorizedMissing: CategorizedMissingItem[],
+  markMissingRequired: () => void,
+): void {
+  if (!staffEducationPromptApplicable(context)) return;
+
+  const state = resolveStaffEducationQualityState(context);
+  if (!state.contentGenerated) return;
+
+  provided.push('Guideline-specific staff instruction generated');
+
+  if (state.instructionProvided) {
+    provided.push('Staff instruction provided');
+  }
+
+  if (state.understandingConfirmed) {
+    provided.push('Staff understanding confirmed');
+  }
+
+  if (!state.instructionProvided && !state.understandingConfirmed) {
+    categorizedMissing.push({
+      label: 'Confirm whether instruction was provided and understood',
+      category: 'facility_required',
+    });
+    markMissingRequired();
+    return;
+  }
+
+  if (state.instructionProvided && !state.understandingConfirmed) {
+    categorizedMissing.push({
+      label: 'Staff instruction documented; understanding confirmation needed',
+      category: 'facility_required',
+    });
+    markMissingRequired();
+  }
 }
 
 function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
@@ -390,26 +424,14 @@ export function buildDocumentationQualityCheck(args: {
     trackField(item.label, item.documentedLabel, item.category, present, applicable);
   }
 
-  const staffInstructionContentPresent = SUPPLEMENTAL_CHECK_ITEMS[2].isPresent(context);
-  const staffInstructionProvidedPresent = SUPPLEMENTAL_CHECK_ITEMS[3].isPresent(context);
-  const staffUnderstandingPresent = SUPPLEMENTAL_CHECK_ITEMS[4].isPresent(context);
-
-  if (staffInstructionContentPresent && !staffInstructionProvidedPresent) {
-    categorizedMissing.push({
-      label: 'Staff instruction provision not documented',
-      category: 'clinically_useful',
-      reason: 'Suggested staff instruction content is available without supported evidence that education was provided',
-    });
-  }
-
-  if ((staffInstructionProvidedPresent || staffInstructionContentPresent) && !staffUnderstandingPresent) {
-    categorizedMissing.push({
-      label: 'Staff understanding confirmation not documented',
-      category: 'facility_required',
-      reason: 'Staff instructions are documented without confirmed understanding',
-    });
-    missingRequiredField = true;
-  }
+  trackStaffEducationQualityCheck(
+    context,
+    provided,
+    categorizedMissing,
+    () => {
+      missingRequiredField = true;
+    },
+  );
 
   categorizedMissing.sort((left, right) => compareMissingCategory(left.category, right.category));
 

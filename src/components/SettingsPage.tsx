@@ -27,7 +27,7 @@ const LANGUAGE_OPTIONS: { id: Language; label: string; native: string }[] = [
 ];
 
 export function SettingsPage({ open, onClose }: SettingsPageProps) {
-  const { settings, setTheme, setTerminology, setLanguage, setAutoCompleteStaffEducation } = useSettings();
+  const { settings, setTheme, setTerminology, setLanguage, setAutoCompleteStaffEducation, setAutoConfirmStaffInstructionFromNursingInterventions } = useSettings();
 
   if (!open) return null;
 
@@ -123,6 +123,24 @@ export function SettingsPage({ open, onClose }: SettingsPageProps) {
               </span>
               <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                 Generate guideline-specific staff monitoring instruction content from the facility guideline library. This does not document staff understanding unless explicitly supported in the input.
+              </span>
+            </span>
+          </label>
+          <label className="mt-3 flex items-start gap-3 rounded-2xl border-2 border-gray-100 bg-white px-4 py-3.5 dark:border-gray-700 dark:bg-gray-900/50">
+            <input
+              type="checkbox"
+              checked={settings.autoConfirmStaffInstructionFromNursingInterventions}
+              onChange={(event) =>
+                setAutoConfirmStaffInstructionFromNursingInterventions(event.target.checked)
+              }
+              className="mt-1 h-4 w-4 rounded border-pink-300 text-pink-600 focus:ring-pink-400"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800 dark:text-gray-100">
+                Auto-confirm staff instruction provision when &ldquo;nursing interventions completed&rdquo; is documented
+              </span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                Treats nursing interventions completed as evidence that staff instruction was provided. Does not confirm staff understanding.
               </span>
             </span>
           </label>

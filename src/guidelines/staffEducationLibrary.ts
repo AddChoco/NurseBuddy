@@ -41,7 +41,7 @@ export const STAFF_EDUCATION_RULES: Record<GuidelineId, StaffEducationRule> = {
       'gastric bleeding',
     ],
     instructionText:
-      'Monitor for recurrent vomiting, nausea, aspiration symptoms, decreased intake/output, dehydration, abdominal changes, or gastric bleeding and report changes to the nurse immediately.',
+      'Monitor for recurrent vomiting, nausea, coughing or respiratory symptoms associated with aspiration, abdominal pain or distention, decreased intake or output, dehydration, or signs of gastric bleeding, and report changes to the nurse immediately.',
     sourcePlanStatements: [
       'Assess every shift for 24 hours after resident is symptom free.',
       'Notify oncoming nurse if follow-up is needed.',
@@ -491,15 +491,42 @@ export const STAFF_EDUCATION_PROVIDED_PATTERNS: RegExp[] = [
   /\bstaff instructed\b/i,
   /\bdsp instructed\b/i,
   /\beducation provided\b/i,
+  /\bteaching completed\b/i,
+  /\binstructions provided\b/i,
   /\bstaff education completed\b/i,
   /\bnursing interventions including staff education\b/i,
   /직원에게\s*교육(?:함|했)/i,
   /dsp(?:에게|한테)\s*.*(?:설명|교육)(?:함|했)/i,
   /모니터(?:하고|하)?\s*.*보고(?:하)?(?:도록)?\s*설명(?:함|했)/i,
+  /교육\s*(?:제공|완료)(?:함|했)/i,
+  /지시\s*(?:제공|완료)(?:함|했)/i,
 ];
 
-/** When true, explicit "nursing interventions completed" supports staffInstructionProvided. */
-export const NURSING_INTERVENTIONS_COMPLETED_INDICATES_STAFF_INSTRUCTION_PROVIDED = true;
+export interface DetectStaffInstructionProvidedOptions {
+  autoConfirmFromNursingInterventions?: boolean;
+}
+
+export function detectStaffInstructionProvided(
+  input: string,
+  options: DetectStaffInstructionProvidedOptions = {},
+): boolean {
+  if (STAFF_EDUCATION_PROVIDED_PATTERNS.some((pattern) => pattern.test(input))) return true;
+  if (
+    options.autoConfirmFromNursingInterventions
+    && detectNursingInterventionsCompleted(input)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function buildStaffInstructionHelperDisplay(instructionContent: string): string {
+  return instructionContent
+    .trim()
+    .replace(/\.$/, '')
+    .replace(/\band report changes to the nurse immediately$/i, 'and report changes immediately')
+    .concat('.');
+}
 
 export function getStaffEducationRule(
   guidelineId: GuidelineId,
@@ -564,17 +591,6 @@ export function resolveStaffInstructionContent(
   };
 }
 
-export function detectStaffInstructionProvided(input: string): boolean {
-  if (STAFF_EDUCATION_PROVIDED_PATTERNS.some((pattern) => pattern.test(input))) return true;
-  if (
-    NURSING_INTERVENTIONS_COMPLETED_INDICATES_STAFF_INSTRUCTION_PROVIDED
-    && detectNursingInterventionsCompleted(input)
-  ) {
-    return true;
-  }
-  return false;
-}
-
 export function detectStaffUnderstandingMethod(input: string): string {
   if (!detectStaffUnderstandingConfirmed(input)) return '';
   if (/\bdemonstrated\b/i.test(input) && /\bverbalized\b/i.test(input)) {
@@ -610,15 +626,18 @@ export interface StaffEducationStructuredState {
   staffUnderstandingMethod: string;
   staffEducationRuleId: string;
   suggestedStaffInstruction: string | null;
+  instructionHelperDisplay: string;
   requiresManualReview: boolean;
 }
 
 export function buildSuggestedStaffInstruction(
   instructionContent: string,
   staffInstructionProvided: boolean,
+  staffUnderstandingConfirmed: boolean,
 ): string | null {
-  if (staffInstructionProvided || !instructionContent.trim()) return null;
-  return instructionContent.trim();
+  if (!instructionContent.trim()) return null;
+  if (staffInstructionProvided && staffUnderstandingConfirmed) return null;
+  return buildStaffInstructionHelperDisplay(instructionContent);
 }
 
 export interface StaffEducationCoverageRow {

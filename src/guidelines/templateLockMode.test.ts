@@ -51,6 +51,7 @@ describe('templateLockMode', () => {
       def: ELEVATED_TEMPERATURE_GUIDELINE,
       assessmentType: 'follow_up',
       terminology: 'resident',
+      autoConfirmStaffInstructionFromNursingInterventions: true,
     });
 
     expect(built.soap.subjective).toContain(
@@ -92,6 +93,7 @@ describe('templateLockMode', () => {
       def: ELEVATED_TEMPERATURE_GUIDELINE,
       assessmentType: 'follow_up',
       terminology: 'resident',
+      autoConfirmStaffInstructionFromNursingInterventions: true,
     });
 
     const validation = validateAiDocumentationOutput(
@@ -111,7 +113,7 @@ describe('templateLockMode', () => {
 
     expect(validation.completeness.provided).toContain('Current temperature documented');
     expect(validation.completeness.provided).not.toContain('Signs or symptoms of infection documented');
-    expect(validation.completeness.missing).toContain('Staff understanding confirmation not documented');
+    expect(validation.completeness.missing).toContain('Staff instruction documented; understanding confirmation needed');
     expect(validation.errors.some((error) => /Unsupported completed finding/i.test(error))).toBe(false);
   });
 

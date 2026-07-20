@@ -156,37 +156,17 @@ R — Recommendation:
 - Never invent a treatment recommendation, provider order, or clinical scenario requiring notification.
 - Do not assume provider notification already occurred unless reported.`,
 
-  [LAR_EMAIL_LABEL]: `OUTPUT FORMAT: LAR Email (Legally Authorized Representative)
+  [LAR_EMAIL_LABEL]: `OUTPUT FORMAT: LAR Email
 
-Write a short, family-friendly email in plain language using ONLY documented facts from the current input.
+Write a concise family update in plain language using ONLY documented facts.
 
-DOCUMENTATION RULES:
-- State only what was reported or observed — never speculate or infer causes.
-- WRONG: "It seems the vomiting may have been related to eating quickly."
-- CORRECT: "DSP reported that the resident ate rapidly prior to the vomiting episode."
-
-Include ONLY when provided in the input:
-- reason for communication
-- current condition and supported assessment findings
-- nursing interventions actually documented
-- provider communication (only if it occurred)
-- follow-up plan (only if provided)
-
-Never invent:
-- provider orders or recommendations
-- LAR notification events
-- future appointments
-- medications or treatments
-- education not documented
-- unsupported conclusions or causal explanations
-
-Do not use speculative language ("it seems", "may have been", "possibly related to", "appears to be").
-Do not fabricate provider communication or orders.
-Do not assume the LAR was notified unless reported.
-Use a warm, professional tone with a simple greeting and closing.
-End with a concise facility-based follow-up statement such as:
-"Staff will continue monitoring according to the facility [Guideline Name] Guideline and will report any recurrence or change in condition."
-Do not overstate that the resident is stable, improving, or resolved unless supported by the source documentation.`,
+Rules:
+- State reported/observed facts only. No speculation or invented causes.
+- Include only what the input supports: reason for contact, current status, completed nursing actions, provider contact if reported, and follow-up if provided.
+- Do not invent orders, medications, appointments, or notifications.
+- Avoid phrases like "it seems", "may have been", or "possibly related to".
+- Use a brief greeting and closing.
+- End with one short monitoring sentence if appropriate.`,
 
   // Legacy labels retained for backward compatibility
   "SBAR": `OUTPUT FORMAT: Provider Notification (SBAR)
@@ -430,7 +410,7 @@ async function generateDocument(
 
 function appendLarGuidelineFollowUp(content: string, guidelineDisplayName: string): string {
   const followUp =
-    `Staff will continue monitoring according to the facility ${guidelineDisplayName} Guideline and will report any recurrence or change in condition.`;
+    `Staff will continue monitoring per the ${guidelineDisplayName} Guideline and report any changes.`;
   const normalized = content.trim();
   if (/continue monitoring according to the facility/i.test(normalized)) {
     return normalized;
@@ -446,6 +426,8 @@ async function generateDocumentationBundle(
   terminology?: string,
   includeSbar = false,
   autoCompleteStaffEducation = true,
+  autoConfirmStaffInstructionFromNursingInterventions = false,
+  nurseStaffEducationConfirmations?: { instructionProvided?: boolean; understandingConfirmed?: boolean },
 ) {
   return generateAiDocumentationBundle(
     (instructions, input, temperature) => callOpenAI(apiKey, instructions, input, temperature),
@@ -455,7 +437,8 @@ async function generateDocumentationBundle(
     terminology,
     includeSbar,
     undefined,
-    { autoCompleteStaffEducation },
+    { autoCompleteStaffEducation, autoConfirmStaffInstructionFromNursingInterventions },
+    nurseStaffEducationConfirmations,
   );
 }
 
@@ -496,6 +479,11 @@ interface RequestBody {
   supplements?: { label: string; value: string }[];
   terminology?: string;
   autoCompleteStaffEducation?: boolean;
+  autoConfirmStaffInstructionFromNursingInterventions?: boolean;
+  nurseStaffEducationConfirmations?: {
+    instructionProvided?: boolean;
+    understandingConfirmed?: boolean;
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -513,6 +501,8 @@ Deno.serve(async (req: Request) => {
       supplements,
       terminology,
       autoCompleteStaffEducation = true,
+      autoConfirmStaffInstructionFromNursingInterventions = false,
+      nurseStaffEducationConfirmations,
     } = body;
 
     if (!guideline || !clinicalInfo) {
@@ -562,7 +552,7 @@ Deno.serve(async (req: Request) => {
 
     const documents: GeneratedDocument[] = [];
 
-    const { validated, qualityCheck, generationMeta } = await generateDocumentationBundle(
+    const { validated, qualityCheck, generationMeta, templateLockClientBundle } = await generateDocumentationBundle(
       apiKey,
       guideline,
       clinicalInfo,
@@ -570,6 +560,8 @@ Deno.serve(async (req: Request) => {
       terminology,
       includeSbar,
       autoCompleteStaffEducation,
+      autoConfirmStaffInstructionFromNursingInterventions,
+      nurseStaffEducationConfirmations,
     );
 
     documents.push({ label: SOAP_NOTE_LABEL, content: validated.soapText });
@@ -598,6 +590,8 @@ Deno.serve(async (req: Request) => {
         documents,
         qualityCheck,
         generationMeta,
+        templateLockContext: templateLockClientBundle?.templateLockContext,
+        staffEducation: templateLockClientBundle?.staffEducation,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

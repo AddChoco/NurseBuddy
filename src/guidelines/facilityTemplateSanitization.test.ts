@@ -111,8 +111,8 @@ describe('facilityTemplateSanitization', () => {
     expect(validation.errors.some((error) => error.includes('Staff education not provided'))).toBe(false);
     expect(validation.errors.some((error) => error.includes('Unsupported completed finding'))).toBe(false);
     expect(validation.completeness?.provided).toContain('Nursing interventions documented');
-    expect(validation.completeness?.provided).toContain('Staff instruction content generated');
-    expect(validation.completeness?.missing).toContain('Staff understanding confirmation not documented');
+    expect(validation.completeness?.provided).toContain('Guideline-specific staff instruction generated');
+    expect(validation.completeness?.missing).toContain('Staff instruction documented; understanding confirmation needed');
     expect(parsed.soap.plan).toMatch(/Nursing interventions completed:\n.*PRN Tylenol administered/i);
     expect(parsed.soap.plan).not.toMatch(/Staff verbalized understanding of/i);
   });

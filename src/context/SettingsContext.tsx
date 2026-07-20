@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: Settings = {
   terminology: 'resident',
   language: 'english',
   autoCompleteStaffEducation: true,
+  autoConfirmStaffInstructionFromNursingInterventions: false,
 };
 
 function loadSettings(): Settings {
@@ -37,6 +38,7 @@ interface SettingsContextValue {
   setTerminology: (t: Terminology) => void;
   setLanguage: (l: Language) => void;
   setAutoCompleteStaffEducation: (enabled: boolean) => void;
+  setAutoConfirmStaffInstructionFromNursingInterventions: (enabled: boolean) => void;
   /** resolved dark mode (system => actual) */
   isDark: boolean;
   toggleQuickTheme: () => void;
@@ -90,12 +92,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings((s) => ({ ...s, autoCompleteStaffEducation }));
   }, []);
 
+  const setAutoConfirmStaffInstructionFromNursingInterventions = useCallback(
+    (autoConfirmStaffInstructionFromNursingInterventions: boolean) => {
+      setSettings((s) => ({ ...s, autoConfirmStaffInstructionFromNursingInterventions }));
+    },
+    [],
+  );
+
   const toggleQuickTheme = useCallback(() => {
     setSettings((s) => ({ ...s, theme: s.theme === 'dark' ? 'light' : 'dark' }));
   }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, setTheme, setTerminology, setLanguage, setAutoCompleteStaffEducation, isDark, toggleQuickTheme }}>
+    <SettingsContext.Provider value={{
+      settings,
+      setTheme,
+      setTerminology,
+      setLanguage,
+      setAutoCompleteStaffEducation,
+      setAutoConfirmStaffInstructionFromNursingInterventions,
+      isDark,
+      toggleQuickTheme,
+    }}>
       {children}
     </SettingsContext.Provider>
   );

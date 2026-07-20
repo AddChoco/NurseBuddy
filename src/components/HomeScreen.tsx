@@ -6,13 +6,24 @@ import { MissingInfoCard } from './MissingInfoCard';
 import { DocumentationOutput } from './DocumentationOutput';
 import { PrivacyWarning } from './PrivacyWarning';
 import { LoadSampleDevTools } from './LoadSampleDevTools';
+import { StaffEducationPreGeneratePanel } from './StaffEducationPanel';
 import { useSettings } from '../context/SettingsContext';
 import { GUIDELINES, OPTIONAL_OUTPUTS } from '../constants';
 import { analyzeMissingInfo, resolveDisplayMissingInfo } from '../lib/aiEngine';
 import { generateDocumentationViaAPI } from '../lib/api';
+import { rerenderSoapWithNurseStaffEducation } from '../lib/templateLockClient';
 import { isDevToolsEnabled } from '../lib/devTools';
 import type { ClinicalSample } from '../testData/sampleClinicalInputs';
-import type { GuidelineId, GeneratedDocument, MissingInfoItem, DocumentationQualityCheck, DocumentationGenerationMeta } from '../types';
+import type {
+  GuidelineId,
+  GeneratedDocument,
+  MissingInfoItem,
+  DocumentationQualityCheck,
+  DocumentationGenerationMeta,
+  NurseStaffEducationConfirmations,
+  StaffEducationState,
+  TemplateLockClientContext,
+} from '../types';
 
 type Phase = 'input' | 'review' | 'result';
 
@@ -28,6 +39,12 @@ export function HomeScreen() {
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [qualityCheck, setQualityCheck] = useState<DocumentationQualityCheck | null>(null);
   const [generationMeta, setGenerationMeta] = useState<DocumentationGenerationMeta | null>(null);
+  const [templateLockContext, setTemplateLockContext] = useState<TemplateLockClientContext | null>(null);
+  const [staffEducation, setStaffEducation] = useState<StaffEducationState | null>(null);
+  const [nurseConfirmations, setNurseConfirmations] = useState<NurseStaffEducationConfirmations>({
+    instructionProvided: false,
+    understandingConfirmed: false,
+  });
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,11 +69,26 @@ export function HomeScreen() {
         info,
         supplements,
         settings.terminology,
-        { includeProviderNotification, includeLarEmail, autoCompleteStaffEducation: settings.autoCompleteStaffEducation },
+        {
+          includeProviderNotification,
+          includeLarEmail,
+          autoCompleteStaffEducation: settings.autoCompleteStaffEducation,
+          autoConfirmStaffInstructionFromNursingInterventions:
+            settings.autoConfirmStaffInstructionFromNursingInterventions,
+          nurseStaffEducationConfirmations: nurseConfirmations,
+        },
       );
       setDocuments(result.documents);
       setQualityCheck(result.qualityCheck);
       setGenerationMeta(result.generationMeta ?? null);
+      setTemplateLockContext(result.templateLockContext ?? null);
+      setStaffEducation(result.staffEducation ?? null);
+      if (result.staffEducation) {
+        setNurseConfirmations({
+          instructionProvided: result.staffEducation.staffInstructionProvided,
+          understandingConfirmed: result.staffEducation.staffUnderstandingConfirmed,
+        });
+      }
       setResultMissingInfo(
         resolveDisplayMissingInfo(gid, info, supplements, result.documentation),
       );
@@ -66,7 +98,40 @@ export function HomeScreen() {
     } finally {
       setGenerating(false);
     }
-  }, [includeProviderNotification, includeLarEmail, settings.terminology, settings.autoCompleteStaffEducation]);
+  }, [
+    includeProviderNotification,
+    includeLarEmail,
+    settings.terminology,
+    settings.autoCompleteStaffEducation,
+    settings.autoConfirmStaffInstructionFromNursingInterventions,
+    nurseConfirmations,
+  ]);
+
+  const handleNurseConfirmationsChange = useCallback((next: NurseStaffEducationConfirmations) => {
+    setNurseConfirmations(next);
+    if (!templateLockContext) return;
+
+    const rerendered = rerenderSoapWithNurseStaffEducation({
+      context: templateLockContext,
+      nurseConfirmations: next,
+      autoGenerateStaffInstructionContent: settings.autoCompleteStaffEducation,
+      autoConfirmStaffInstructionFromNursingInterventions:
+        settings.autoConfirmStaffInstructionFromNursingInterventions,
+    });
+
+    setTemplateLockContext(rerendered.templateLockContext);
+    setStaffEducation(rerendered.staffEducation);
+    setQualityCheck(rerendered.qualityCheck);
+    setDocuments((prev) =>
+      prev.map((doc) =>
+        doc.label === 'SOAP Note' ? { ...doc, content: rerendered.soapText } : doc,
+      ),
+    );
+  }, [
+    templateLockContext,
+    settings.autoCompleteStaffEducation,
+    settings.autoConfirmStaffInstructionFromNursingInterventions,
+  ]);
 
   const startGeneration = useCallback(() => {
     if (!guidelineId) return;
@@ -103,6 +168,9 @@ export function HomeScreen() {
     setDocuments([]);
     setQualityCheck(null);
     setGenerationMeta(null);
+    setTemplateLockContext(null);
+    setStaffEducation(null);
+    setNurseConfirmations({ instructionProvided: false, understandingConfirmed: false });
     setMissingInfo([]);
     setResultMissingInfo([]);
     setError(null);
@@ -114,6 +182,9 @@ export function HomeScreen() {
     setDocuments([]);
     setQualityCheck(null);
     setGenerationMeta(null);
+    setTemplateLockContext(null);
+    setStaffEducation(null);
+    setNurseConfirmations({ instructionProvided: false, understandingConfirmed: false });
     setMissingInfo([]);
     setResultMissingInfo([]);
     setClinicalInfo('');
@@ -133,6 +204,9 @@ export function HomeScreen() {
     setDocuments([]);
     setQualityCheck(null);
     setGenerationMeta(null);
+    setTemplateLockContext(null);
+    setStaffEducation(null);
+    setNurseConfirmations({ instructionProvided: false, understandingConfirmed: false });
     setMissingInfo([]);
     setResultMissingInfo([]);
     setError(null);
@@ -252,6 +326,13 @@ export function HomeScreen() {
           </div>
         )}
 
+        {guidelineId && phase !== 'result' && (
+          <StaffEducationPreGeneratePanel
+            nurseConfirmations={nurseConfirmations}
+            onNurseConfirmationsChange={setNurseConfirmations}
+          />
+        )}
+
         <button
           type="button"
           onClick={startGeneration}
@@ -299,6 +380,10 @@ export function HomeScreen() {
               generationMeta={generationMeta}
               showRuntimeDebug={devToolsEnabled}
               onRegenerate={regenerate}
+              templateLockContext={templateLockContext}
+              staffEducation={staffEducation}
+              nurseConfirmations={nurseConfirmations}
+              onNurseConfirmationsChange={handleNurseConfirmationsChange}
             />
             <button
               type="button"
