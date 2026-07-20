@@ -119,10 +119,10 @@ export function SettingsPage({ open, onClose }: SettingsPageProps) {
             />
             <span>
               <span className="block text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Auto-complete staff education documentation
+                Auto-generate staff instruction content
               </span>
               <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                When nursing instructions are generated, complete standard staff education prompts such as &quot;Staff verbalized or demonstrated understanding of instructions provided.&quot;
+                Generate guideline-specific staff monitoring instruction content from the facility guideline library. This does not document staff understanding unless explicitly supported in the input.
               </span>
             </span>
           </label>

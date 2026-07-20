@@ -53,7 +53,11 @@ describe('templateLockMode', () => {
       terminology: 'resident',
     });
 
-    expect(built.soap.subjective).toBe(template.split('OBJECTIVE:')[0].trim());
+    expect(built.soap.subjective).toContain(
+      'Resident is on Elevated Temperature Guideline following a temperature of 101.8°F on 07/17/26 at 1800.',
+    );
+    expect(built.soap.subjective).not.toContain('No new concerns reported');
+    expect(built.soap.subjective).not.toContain('resting comfortably');
     expect(built.soap.objective).toContain('See Interactive View Assessment.');
     expect(built.soap.objective).toContain('Current temperature:\n98.4°F');
     expect(built.soap.objective).toContain('Temperature route:\nTemporal');
@@ -64,12 +68,19 @@ describe('templateLockMode', () => {
     expect(built.values.assessment.clinicalSummary).toBe(
       'Afebrile on follow-up after previously elevated temperature.',
     );
-    expect(built.soap.subjective).not.toContain('resting comfortably');
     expect(built.soap.assessment).toContain('Elevated Temperature Follow-up.');
     expect(built.soap.assessment).toContain('Afebrile on follow-up after previously elevated temperature.');
     expect(built.soap.plan).toContain('Continue temperature assessments according to the Elevated Temperature Guideline.');
     expect(built.soap.plan).toMatch(/Nursing interventions completed:\n.*Temperature reassessed/i);
-    expect(built.soap.plan).toMatch(/Staff verbalized or demonstrated understanding of instructions provided:\s*$/m);
+    expect(built.soap.plan).toContain(
+      'Staff verbalized or demonstrated understanding of instructions provided:',
+    );
+    expect(built.soap.plan).not.toMatch(
+      /Staff verbalized or demonstrated understanding of instructions provided:\n(?:Staff verbalized|Unable to assess)/,
+    );
+    expect(built.staffEducation.staffInstructionContent).toMatch(/increased temperature, chills, fatigue/i);
+    expect(built.staffEducation.staffInstructionProvided).toBe(true);
+    expect(built.staffEducation.staffUnderstandingConfirmed).toBe(false);
   });
 
   it('marks blank infection and environmental fields missing in quality check', () => {
@@ -115,7 +126,10 @@ describe('templateLockMode', () => {
       terminology: 'individual',
     });
 
-    expect(built.soap.subjective).toMatch(/DSP reported/i);
+    expect(built.soap.subjective).toMatch(
+      /DSP reported one episode of vomiting yesterday at 1730 after dinner\./i,
+    );
+    expect(built.soap.subjective).not.toContain('resting comfortably');
     expect(built.soap.objective).toContain('Intake/output:\n100% meals, 52 oz fluid intake, 5 voids, 1 bowel movement.');
     expect(built.soap.objective).toContain('Positioning per PNMP:\nSitting upright.');
     expect(built.soap.assessment).toContain('Vomiting Follow-up.');
@@ -158,6 +172,41 @@ describe('templateLockMode', () => {
     values.objective.temperatureRoute = 'Temporal';
     const validation = validateTemplateLockValues(values, schema, ELEVATED_TEMP_FOLLOW_UP_INPUT);
     expect(validation.errors.some((error) => /lastElevatedTemperatureDateTime/i.test(error))).toBe(false);
+  });
+
+  it('auto-renders enteral feeding rate N/A when tube feeding is not documented', () => {
+    const schema = buildTemplateLockSchema(VOMITING_GUIDELINE, 'follow_up');
+    const built = buildTemplateLockDocumentation({
+      schema,
+      aiValues: emptyTemplateLockValues(),
+      input: VOMITING_FOLLOW_UP_INPUT,
+      def: VOMITING_GUIDELINE,
+      assessmentType: 'follow_up',
+      terminology: 'individual',
+    });
+
+    expect(built.values.objective.enteralFeedingRate).toBe('N/A');
+    expect(built.soap.objective).toContain('Enteral feeding rate:\nN/A');
+  });
+
+  it('renders staff understanding confirmation from explicit verbalization', () => {
+    const schema = buildTemplateLockSchema(ELEVATED_TEMPERATURE_GUIDELINE, 'follow_up');
+    const aiValues = emptyTemplateLockValues();
+    aiValues.plan.staffUnderstandingConfirmed = 'true';
+    const input = `${ELEVATED_TEMP_FOLLOW_UP_INPUT} Staff verbalized understanding of temperature monitoring.`;
+    const built = buildTemplateLockDocumentation({
+      schema,
+      aiValues,
+      input,
+      def: ELEVATED_TEMPERATURE_GUIDELINE,
+      assessmentType: 'follow_up',
+      terminology: 'resident',
+    });
+
+    expect(built.values.plan.staffUnderstandingConfirmed).toBe('true');
+    expect(built.soap.plan).toMatch(
+      /Staff verbalized or demonstrated understanding of instructions provided:\nStaff verbalized understanding/i,
+    );
   });
 
   it('keeps rendered template headings immutable', () => {

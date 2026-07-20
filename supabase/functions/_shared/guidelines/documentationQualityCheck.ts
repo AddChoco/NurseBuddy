@@ -13,8 +13,14 @@ import { getFacilityPromptValue } from './planPromptEnrichment.ts';
 import { extractPlanStandingInstructions, getFacilityFormTemplate } from './facilityFormTemplates.ts';
 import { STAFF_EDUCATION_PROMPT } from './facilityTemplateMode.ts';
 import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
+import { parseStructuredBoolean } from './staffEducationLibrary.ts';
+import { readStaffEducationStructuredState } from './staffEducationTemplateLock.ts';
 import type { TemplateLockSchema, TemplateLockValues } from './templateLockMode.ts';
-import { getTemplateLockFieldById, isStructuredFieldDocumented } from './templateLockMode.ts';
+import {
+  ENTERAL_FEEDING_APPLICABILITY_PATTERN,
+  getTemplateLockFieldById,
+  isStructuredFieldDocumented,
+} from './templateLockMode.ts';
 import { getFieldIdForChecklistLabel } from './templateLockPopulation.ts';
 
 export interface CategorizedMissingItem {
@@ -30,7 +36,7 @@ export interface DocumentationQualityCheckResult {
   scorePercent: number;
 }
 
-const ENTERAL_APPLICABILITY_PATTERN = /enteral|g-tube|gtube|g tube|tube feed|tube feeding|feeding rate|jevity|osmolite|ml\/hr|ml\/hour/i;
+const ENTERAL_APPLICABILITY_PATTERN = ENTERAL_FEEDING_APPLICABILITY_PATTERN;
 
 const SUPPLEMENTAL_CHECK_ITEMS: Array<{
   label: string;
@@ -67,18 +73,49 @@ const SUPPLEMENTAL_CHECK_ITEMS: Array<{
     },
   },
   {
-    label: 'Staff instructions',
-    documentedLabel: 'DSP monitoring instructions included',
+    label: 'Staff instruction content generated',
+    documentedLabel: 'Staff instruction content generated',
     category: 'clinically_useful',
-    isPresent: ({ soapText }) =>
-      /\b(?:dsp\/staff|dsp|staff) instructed to monitor\b/i.test(soapText),
+    isPresent: ({ templateLockValues, soapText, enrichment }) => {
+      if (templateLockValues?.plan.staffInstructionContent?.trim()) return true;
+      if (enrichment?.staffEducationInstruction) return true;
+      if (enrichment?.staffEducationGenerated) return true;
+      return /\b(?:dsp\/staff|dsp|staff) instructed to monitor\b/i.test(soapText);
+    },
+    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
+      Boolean(
+        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
+        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
+      ),
+  },
+  {
+    label: 'Staff instruction provided',
+    documentedLabel: 'Staff instruction provided',
+    category: 'facility_required',
+    isPresent: ({ templateLockValues, enrichment, input, soapText }) => {
+      if (templateLockValues) {
+        return parseStructuredBoolean(templateLockValues.plan.staffInstructionProvided);
+      }
+      if (enrichment?.staffEducationInstruction) return true;
+      if (/\b(?:staff|dsp) instructed\b/i.test(soapText)) return true;
+      return /\b(?:staff|dsp) instructed\b|\bnursing interventions completed\b/i.test(input);
+    },
+    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
+      Boolean(
+        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
+        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
+      ),
   },
   {
     label: 'Staff understanding confirmation',
-    documentedLabel: 'Staff understanding confirmation documented',
+    documentedLabel: 'Staff understanding confirmed',
     category: 'facility_required',
-    isPresent: ({ facts, enrichment, planText, input, standingInstructions }) =>
-      staffUnderstandingDocumented({ input, searchableText: '', soapText: '', planText, facts, enrichment, standingInstructions }),
+    isPresent: (context) => staffUnderstandingDocumented(context),
+    isApplicable: ({ templateLockSchema, def, assessmentType }) =>
+      Boolean(
+        templateLockSchema?.fields.some((field) => field.id === 'staffUnderstandingConfirmation')
+        || getFacilityFormTemplate(def, assessmentType).includes(STAFF_EDUCATION_PROMPT),
+      ),
   },
 ];
 
@@ -92,6 +129,8 @@ interface QualityCheckContext {
   standingInstructions: ReadonlySet<string>;
   templateLockValues?: TemplateLockValues | null;
   templateLockSchema?: TemplateLockSchema | null;
+  def: GuidelineDefinition;
+  assessmentType: AssessmentType;
 }
 
 function normalizeSearchText(parts: string[]): string {
@@ -133,6 +172,8 @@ function stripTemplatePromptLabels(text: string): string {
 
 function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
   if (context.templateLockValues && context.templateLockSchema) {
+    const state = readStaffEducationStructuredState(context.templateLockValues);
+    if (state.staffUnderstandingConfirmed) return true;
     return isStructuredFieldDocumented(
       context.templateLockValues,
       'staffUnderstandingConfirmation',
@@ -145,12 +186,12 @@ function staffUnderstandingDocumented(context: QualityCheckContext): boolean {
     STAFF_EDUCATION_PROMPT,
     context.standingInstructions,
   );
-  if (promptValue && !isUnknownPlaceholder(promptValue)) return true;
-
-  if (context.enrichment?.staffUnderstandingConfirmed) return true;
-  if (context.enrichment?.staffUnderstandingValue && !/^pending/i.test(context.enrichment.staffUnderstandingValue)) {
+  if (promptValue && !isUnknownPlaceholder(promptValue)) {
+    if (/unable to assess staff understanding/i.test(promptValue)) return false;
     return true;
   }
+
+  if (context.enrichment?.staffUnderstandingConfirmed) return true;
 
   return detectStaffUnderstandingConfirmed(context.input);
 }
@@ -236,9 +277,13 @@ function isFieldPresent(
 function isFieldApplicable(
   fieldLabel: string,
   clinicalText: string,
+  context?: QualityCheckContext,
 ): boolean {
   if (/enteral feeding rate/i.test(fieldLabel)) {
-    return ENTERAL_APPLICABILITY_PATTERN.test(clinicalText);
+    if (context?.templateLockSchema?.fields.some((field) => field.id === 'enteralFeedingRate')) {
+      return true;
+    }
+    return ENTERAL_FEEDING_APPLICABILITY_PATTERN.test(clinicalText);
   }
   return true;
 }
@@ -284,6 +329,8 @@ export function buildDocumentationQualityCheck(args: {
     standingInstructions,
     templateLockValues: args.templateLockValues,
     templateLockSchema: args.templateLockSchema,
+    def: args.def,
+    assessmentType: args.assessmentType,
   };
 
   const provided: string[] = [];
@@ -323,7 +370,7 @@ export function buildDocumentationQualityCheck(args: {
   for (const field of args.def.missingInformationChecklist) {
     const category = inferMissingInfoCategory(field);
     const applicable =
-      isFieldApplicable(field.label, args.input)
+      isFieldApplicable(field.label, args.input, context)
       && shouldCheckMissingField(field, args.input, args.assessmentType);
     const present = isFieldPresent(field.label, args.def, context);
 
@@ -343,9 +390,19 @@ export function buildDocumentationQualityCheck(args: {
     trackField(item.label, item.documentedLabel, item.category, present, applicable);
   }
 
-  const staffInstructionsPresent = SUPPLEMENTAL_CHECK_ITEMS[2].isPresent(context);
-  const staffUnderstandingPresent = SUPPLEMENTAL_CHECK_ITEMS[3].isPresent(context);
-  if (staffInstructionsPresent && !staffUnderstandingPresent) {
+  const staffInstructionContentPresent = SUPPLEMENTAL_CHECK_ITEMS[2].isPresent(context);
+  const staffInstructionProvidedPresent = SUPPLEMENTAL_CHECK_ITEMS[3].isPresent(context);
+  const staffUnderstandingPresent = SUPPLEMENTAL_CHECK_ITEMS[4].isPresent(context);
+
+  if (staffInstructionContentPresent && !staffInstructionProvidedPresent) {
+    categorizedMissing.push({
+      label: 'Staff instruction provision not documented',
+      category: 'clinically_useful',
+      reason: 'Suggested staff instruction content is available without supported evidence that education was provided',
+    });
+  }
+
+  if ((staffInstructionProvidedPresent || staffInstructionContentPresent) && !staffUnderstandingPresent) {
     categorizedMissing.push({
       label: 'Staff understanding confirmation not documented',
       category: 'facility_required',

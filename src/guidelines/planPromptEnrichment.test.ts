@@ -100,7 +100,7 @@ describe('planPromptEnrichment', () => {
 
     expect(planDocumentsNursingInterventions(parsed.soap.plan, FALL_GUIDELINE, 'follow_up')).toBe(true);
     expect(validation.completeness.provided).toContain('Nursing interventions documented');
-    expect(validation.completeness.provided).toContain('DSP monitoring instructions included');
+    expect(validation.completeness.provided).toContain('Staff instruction content generated');
     expect(validation.completeness.missing).toContain('Staff understanding confirmation not documented');
     expect(parsed.soap.plan).not.toContain('Staff verbalized understanding of neurological monitoring');
     expect(validation.errors.some((error) => /Unsupported completed finding/i.test(error))).toBe(false);

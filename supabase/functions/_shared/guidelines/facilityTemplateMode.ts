@@ -1,4 +1,4 @@
-import type { AssessmentField, MissingInfoCategory } from './types.ts';
+import type { AssessmentField, MissingInfoCategory } from './types';
 import { FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS } from './fallPlanConstants.ts';
 
 export type AssessmentType =
@@ -151,7 +151,7 @@ export function isFacilityTemplateMode(mode?: string | null): boolean {
 }
 
 export interface FacilityTemplateOptions {
-  /** When true (default), auto-complete standard staff education prompts after nursing instructions are documented. */
+  /** When true (default), auto-generate guideline-specific staff instruction content. Does not confirm understanding. */
   autoCompleteStaffEducation?: boolean;
 }
 
@@ -173,22 +173,21 @@ export function buildStaffEducationAutoCompleteBlock(
   autoCompleteStaffEducation: boolean,
 ): string {
   if (!autoCompleteStaffEducation) {
-    return `STAFF EDUCATION DOCUMENTATION:
+    return `STAFF INSTRUCTION CONTENT:
 - Do not document "${STAFF_EDUCATION_PROMPT}" unless the narrative explicitly confirms staff verbalized or demonstrated understanding.
-- Do not invent staff education completion.`;
+- Do not invent staff education completion or understanding confirmation.`;
   }
 
-  return `STAFF EDUCATION AUTO-COMPLETION (enabled by default):
-When automatic staff education is enabled, generate guideline-specific DSP monitoring instructions required by the selected guideline even if the nurse did not dictate them.
+  return `AUTO-GENERATE STAFF INSTRUCTION CONTENT (enabled by default):
+Generate guideline-specific staff instruction content from the selected guideline library.
+This setting does NOT authorize documenting staff verbalized or demonstrated understanding unless explicitly supported by the narrative.
 
-1. Insert the guideline-appropriate DSP/staff monitoring instruction in the Plan before:
-${STAFF_EDUCATION_PROMPT}
-
-Example for Fall follow-up:
-${FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS}
-
+1. Use the guideline-specific monitoring instruction derived from the facility template and staff education library.
 2. Do NOT automatically complete "${STAFF_EDUCATION_PROMPT}" unless the narrative explicitly confirms staff verbalized or demonstrated understanding.
 3. Leave the staff-understanding confirmation blank when not explicitly documented, and flag it for nurse review.
+
+Example monitoring instruction for Fall follow-up:
+${FALL_FOLLOW_UP_STAFF_MONITORING_INSTRUCTIONS}
 
 Use guideline-specific symptoms and monitoring parameters from the selected guideline — not generic wording.`;
 }

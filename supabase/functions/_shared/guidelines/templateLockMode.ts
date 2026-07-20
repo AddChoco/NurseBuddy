@@ -6,6 +6,7 @@ import {
 } from './facilityFormTemplates.ts';
 import { isNegativeFillerValue } from './facilityTemplateSanitization.ts';
 import { detectStaffUnderstandingConfirmed } from './clinicalFactExtraction.ts';
+import { parseStructuredBoolean } from './staffEducationLibrary.ts';
 
 export type TemplateLockSection = 'subjective' | 'objective' | 'assessment' | 'plan';
 
@@ -80,7 +81,22 @@ const FIELD_ID_OVERRIDES: Record<string, string> = {
   'vomiting resolved status': 'vomitingResolvedStatus',
 };
 
+/** @deprecated Legacy template-lock status — use staffUnderstandingConfirmed instead */
+export type StaffUnderstandingStatus = 'yes' | 'no' | 'unable_to_assess';
+
+export const ENTERAL_FEEDING_APPLICABILITY_PATTERN =
+  /enteral|g-tube|gtube|g tube|tube feed|tube feeding|feeding rate|jevity|osmolite|ml\/hr|ml\/hour/i;
+
 const PLACEHOLDER_VALUES = /^(unknown|n\/a|not documented|not reported|not provided|unable to determine|none)$/i;
+
+const RESERVED_SUBJECTIVE_KEYS = new Set(['assessmentTrigger', 'sectionNarrative']);
+const RESERVED_PLAN_KEYS = new Set([
+  'staffInstructionContent',
+  'staffInstructionProvided',
+  'staffUnderstandingConfirmed',
+  'staffUnderstandingMethod',
+  'staffEducationRuleId',
+]);
 
 const OBJECTIVE_ONLY_PATTERNS: RegExp[] = [
   /\bresting comfortably\b/i,
@@ -217,6 +233,54 @@ function isPlaceholderValue(value: string): boolean {
   return PLACEHOLDER_VALUES.test(value) || isNegativeFillerValue(value);
 }
 
+export function isEntetalFeedingNotApplicableValue(value: string): boolean {
+  return /^n\/a$/i.test(value.trim());
+}
+
+export function isStructuredValueDocumented(fieldId: string, value: string): boolean {
+  if (!value?.trim()) return false;
+  if (fieldId === 'enteralFeedingRate' && isEntetalFeedingNotApplicableValue(value)) return true;
+  return !isPlaceholderValue(value);
+}
+
+export function normalizeStaffUnderstandingStatus(value: unknown): StaffUnderstandingStatus | '' {
+  const normalized = normalizeFieldValue(value).toLowerCase().replace(/\s+/g, '_');
+  if (normalized === 'yes' || normalized === 'no' || normalized === 'unable_to_assess') {
+    return normalized;
+  }
+  return '';
+}
+
+/** @deprecated Use renderStaffUnderstandingConfirmationLine from staffEducationLibrary */
+export function renderStaffUnderstandingConfirmationText(
+  status: StaffUnderstandingStatus,
+  _def: GuidelineDefinition,
+  _assessmentType: AssessmentType,
+): string {
+  if (status === 'yes') {
+    return 'Staff verbalized understanding of instructions provided.';
+  }
+  return '';
+}
+
+export function hasStructuredSubjectiveContent(
+  values: TemplateLockValues,
+  schema: TemplateLockSchema,
+): boolean {
+  if (values.subjective.assessmentTrigger?.trim()) return true;
+  if (values.subjective.sectionNarrative?.trim()) return true;
+  return schema.fields
+    .filter((field) => field.section === 'subjective')
+    .some((field) => Boolean(values.subjective[field.id]?.trim()));
+}
+
+function subjectiveSectionHasRenderedContent(lines: string[]): boolean {
+  return lines.some((line) => {
+    const trimmed = line.trim();
+    return trimmed && trimmed !== 'SUBJECTIVE:' && !trimmed.endsWith(':');
+  });
+}
+
 function collectUnknownKeys(
   record: Record<string, unknown>,
   allowed: Set<string>,
@@ -251,7 +315,7 @@ export function parseTemplateLockResponse(
   }
 
   const fieldValues = (parsed.fieldValues ?? parsed) as Record<string, unknown>;
-  const allowedTop = new Set(['subjective', 'objective', 'assessment', 'plan', 'fieldValues', 'sbar', 'qualityCheck']);
+  const allowedTop = new Set(['subjective', 'objective', 'assessment', 'plan', 'fieldValues', 'qualityCheck']);
   for (const key of Object.keys(parsed)) {
     if (!allowedTop.has(key)) unknownKeys.push(key);
   }
@@ -261,15 +325,24 @@ export function parseTemplateLockResponse(
     if (!allowedFieldSections.has(key)) unknownKeys.push(key);
   }
 
-  const subjectiveIds = new Set(schema.fields.filter((f) => f.section === 'subjective').map((f) => f.id));
+  const subjectiveIds = new Set([
+    ...schema.fields.filter((f) => f.section === 'subjective').map((f) => f.id),
+    ...RESERVED_SUBJECTIVE_KEYS,
+  ]);
   const objectiveIds = new Set(schema.fields.filter((f) => f.section === 'objective').map((f) => f.id));
-  const planIds = new Set(schema.fields.filter((f) => f.section === 'plan').map((f) => f.id));
+  const planIds = new Set([
+    ...schema.fields.filter((f) => f.section === 'plan').map((f) => f.id),
+    ...RESERVED_PLAN_KEYS,
+  ]);
 
   if (fieldValues.subjective && typeof fieldValues.subjective === 'object') {
     const subjective = fieldValues.subjective as Record<string, unknown>;
     collectUnknownKeys(subjective, subjectiveIds, 'subjective', unknownKeys);
     for (const field of schema.fields.filter((item) => item.section === 'subjective')) {
       values.subjective[field.id] = normalizeFieldValue(subjective[field.id]);
+    }
+    for (const key of RESERVED_SUBJECTIVE_KEYS) {
+      values.subjective[key] = normalizeFieldValue(subjective[key]);
     }
   }
 
@@ -296,6 +369,9 @@ export function parseTemplateLockResponse(
     collectUnknownKeys(plan, planIds, 'plan', unknownKeys);
     for (const field of schema.fields.filter((item) => item.section === 'plan')) {
       values.plan[field.id] = normalizeFieldValue(plan[field.id]);
+    }
+    for (const key of RESERVED_PLAN_KEYS) {
+      values.plan[key] = normalizeFieldValue(plan[key]);
     }
   }
 
@@ -329,6 +405,10 @@ function isScalarCompliant(value: string, field: TemplateLockField): boolean {
       || /^\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{3,4}$/i.test(value.trim());
   }
 
+  if (lower.includes('enteral feeding rate')) {
+    return /^(?:\d+(?:\.\d+)?(?:\s*(?:ml\/hr|ml\/hour|ml\/h))?|n\/a)$/i.test(value.trim());
+  }
+
   if (lower.includes('positioning per pnmp')) {
     return value.split(/\s+/).length <= 6 && !/[;]/.test(value);
   }
@@ -351,6 +431,15 @@ export function sanitizeTemplateLockValues(values: TemplateLockValues): Template
   for (const section of ['subjective', 'objective', 'plan'] as const) {
     for (const [key, rawValue] of Object.entries(values[section])) {
       const value = rawValue.trim();
+      if (!value) continue;
+      if (section === 'objective' && key === 'enteralFeedingRate' && isEntetalFeedingNotApplicableValue(value)) {
+        sanitized.objective.enteralFeedingRate = 'N/A';
+        continue;
+      }
+      if (section === 'plan' && RESERVED_PLAN_KEYS.has(key)) {
+        sanitized.plan[key] = value;
+        continue;
+      }
       if (!value || isPlaceholderValue(value)) continue;
       sanitized[section][key] = value;
     }
@@ -388,12 +477,31 @@ export function validateTemplateLockValues(
     }
   }
 
+  if (!hasStructuredSubjectiveContent(sanitized, schema)) {
+    errors.push('Subjective section requires assessmentTrigger or reported symptom content');
+  }
+
   if (
-    sanitized.plan.staffUnderstandingConfirmation
+    parseStructuredBoolean(sanitized.plan.staffUnderstandingConfirmed)
+    && !detectStaffUnderstandingConfirmed(input)
+    && !detectStaffUnderstandingConfirmed(sanitized.plan.staffUnderstandingConfirmation ?? '')
+  ) {
+    errors.push('Staff understanding confirmation is not supported by source narrative');
+  }
+
+  if (
+    sanitized.plan.staffUnderstandingConfirmation?.trim()
+    && !parseStructuredBoolean(sanitized.plan.staffUnderstandingConfirmed)
     && !detectStaffUnderstandingConfirmed(input)
     && !detectStaffUnderstandingConfirmed(sanitized.plan.staffUnderstandingConfirmation)
   ) {
     errors.push('Staff understanding confirmation not supported by source narrative');
+  }
+
+  if (
+    /unable to assess staff understanding/i.test(sanitized.plan.staffUnderstandingConfirmation ?? '')
+  ) {
+    errors.push('Automatic unable-to-assess staff understanding filler is not allowed');
   }
 
   if (sanitized.assessment.clinicalSummary) {
@@ -436,11 +544,8 @@ export function renderTemplateLockSoap(
     if (/^SUBJECTIVE:\s*$/i.test(trimmed)) {
       currentSection = 'subjective';
       sections.subjective.push('SUBJECTIVE:');
-      const subjectiveFields = schema.fields.filter((item) => item.section === 'subjective');
-      if (subjectiveFields.length === 0) {
-        const narrative = values.subjective.sectionNarrative
-          ?? Object.values(values.subjective).filter(Boolean).join(' ');
-        if (narrative) sections.subjective.push(narrative);
+      if (values.subjective.assessmentTrigger?.trim()) {
+        sections.subjective.push(values.subjective.assessmentTrigger.trim());
       }
       continue;
     }
@@ -491,11 +596,29 @@ export function renderTemplateLockSoap(
   }
 
   return {
-    subjective: sections.subjective.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
+    subjective: appendMissingSubjectiveContent(sections.subjective, values, schema),
     objective: sections.objective.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
     assessment: sections.assessment.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
     plan: sections.plan.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
   };
+}
+
+function appendMissingSubjectiveContent(
+  subjectiveLines: string[],
+  values: TemplateLockValues,
+  schema: TemplateLockSchema,
+): string {
+  if (subjectiveSectionHasRenderedContent(subjectiveLines)) {
+    return subjectiveLines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+  }
+
+  const fallback = values.subjective.assessmentTrigger?.trim()
+    || values.subjective.sectionNarrative?.trim();
+  if (fallback) {
+    subjectiveLines.push(fallback);
+  }
+
+  return subjectiveLines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
 }
 
 function buildFieldSchemaBlock(schema: TemplateLockSchema): string {
@@ -514,6 +637,33 @@ function buildFieldSchemaBlock(schema: TemplateLockSchema): string {
     lines.push(`    "${section}": {`);
     if (section === 'assessment') {
       lines.push('      "clinicalSummary": ""');
+    } else if (section === 'subjective') {
+      for (const field of sections[section]) {
+        const hint =
+          field.kind === 'scalar'
+            ? 'scalar value only'
+            : field.kind === 'completion'
+              ? 'supported completion text only'
+              : 'narrative when supported';
+        lines.push(`      "${field.id}": "", // ${field.label.replace(/:$/, '')} — ${hint}`);
+      }
+      lines.push('      "assessmentTrigger": "" // why this SOAP note is being completed; guideline trigger only');
+    } else if (section === 'plan') {
+      for (const field of sections[section]) {
+        const hint =
+          field.kind === 'scalar'
+            ? 'scalar value only'
+            : field.kind === 'completion'
+              ? 'supported completion text only'
+              : 'narrative when supported';
+        lines.push(`      "${field.id}": "", // ${field.label.replace(/:$/, '')} — ${hint}`);
+      }
+      if (sections.plan.some((field) => field.id === 'staffUnderstandingConfirmation')) {
+        lines.push('      "staffInstructionProvided": "", // true | false');
+        lines.push('      "staffUnderstandingConfirmed": "", // true | false');
+        lines.push('      "staffUnderstandingMethod": "", // verbalized | demonstrated | verbalized and demonstrated');
+        lines.push('      "staffEducationRuleId": "" // canonical guideline rule id only');
+      }
     } else {
       for (const field of sections[section]) {
         const hint =
@@ -537,7 +687,6 @@ export function buildTemplateLockPass1Instructions(
   def: GuidelineDefinition,
   terminology: string,
   assessmentType: AssessmentType,
-  includeSbar: boolean,
 ): string {
   const schema = buildTemplateLockSchema(def, assessmentType);
   const term = terminology.trim().toLowerCase() || 'resident';
@@ -553,9 +702,9 @@ The application renders the exact facility template in code.
 TERMINOLOGY: Use "${term}" when referring to the person receiving care.
 
 SECTION OWNERSHIP:
-SUBJECTIVE — reported symptoms, complaints, denials, statements from resident/DSP/staff/family only.
-  Allowed: "${term} denies chills.", "DSP reported no new symptoms."
-  NOT allowed in subjective: resting comfortably, respirations, temperature values, vital signs, administered medications.
+SUBJECTIVE — document WHY this SOAP note is being completed (guideline trigger only).
+  Examples: prior shift report, DSP report of triggering event, follow-up per guideline.
+  NOT allowed in subjective: resting comfortably, current vitals, current condition, administered medications.
 
 OBJECTIVE — observed, measured, assessed, administered, or documented findings only.
   Examples: "98.4°F", "Temporal", "Resident resting comfortably.", "PRN Tylenol administered at 1830."
@@ -563,24 +712,24 @@ OBJECTIVE — observed, measured, assessed, administered, or documented findings
 ASSESSMENT — concise nursing interpretation in clinicalSummary only. Do not repeat raw vitals or objective field lists.
 
 PLAN completion fields — supported completed actions only. Leave blank when unsupported.
+- staffInstructionProvided: true only when input explicitly states staff/DSP was instructed or nursing interventions including staff education were completed
+- staffUnderstandingConfirmed: true only when input explicitly states staff verbalized or demonstrated understanding
+- staffUnderstandingMethod: verbalized | demonstrated | verbalized and demonstrated when confirmed
+- staffEducationRuleId: canonical guideline id only when selecting a staff education rule
+- Do not populate staffUnderstandingConfirmation text. The application renders confirmation text from supported status values.
 
 FIELD VALUE RULES:
 - Scalar fields (temperature, route, time): value only — no narrative sentences.
 - Leave blank ("") when unsupported. Never use unknown, not provided, unable to determine, or similar filler.
-- Do not auto-confirm staff understanding unless explicitly documented.
+- Never write "Unable to assess staff understanding" or similar filler in any field.
 
 GUIDELINE: ${def.displayName}
 ASSESSMENT TYPE: ${assessmentType}
 
 Return ONLY valid JSON using this exact schema (no extra keys):
 ${buildFieldSchemaBlock(schema)}
-${includeSbar ? `,
-  "sbar": {
-    "situation": "",
-    "background": "",
-    "assessment": "",
-    "recommendation": ""
-  }` : ''}
+
+Do NOT include an "sbar" object. SBAR is generated in a separate template-lock pass.
 
 No markdown fences. No prose outside JSON.`;
 }
@@ -659,34 +808,5 @@ export function isStructuredFieldDocumented(
   const field = getTemplateLockFieldById(schema, fieldId);
   if (!field) return false;
   const value = getTemplateLockFieldValue(values, field);
-  return Boolean(value && !isPlaceholderValue(value));
+  return isStructuredValueDocumented(fieldId, value);
 }
-
-export function parseTemplateLockSbar(raw: string): {
-  situation: string;
-  background: string;
-  assessment: string;
-  recommendation: string;
-} | null {
-  const jsonText = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  try {
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    const sbar = parsed.sbar;
-    if (!sbar || typeof sbar !== 'object') return null;
-    const record = sbar as Record<string, unknown>;
-    return {
-      situation: normalizeFieldValue(record.situation),
-      background: normalizeFieldValue(record.background),
-      assessment: normalizeFieldValue(record.assessment),
-      recommendation: normalizeFieldValue(record.recommendation),
-    };
-  } catch {
-    return null;
-  }
-}
-

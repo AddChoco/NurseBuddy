@@ -12,9 +12,66 @@ import {
   getTemplateLockFieldById,
   renderTemplateLockSoap,
   validateTemplateLockValues,
+  ENTERAL_FEEDING_APPLICABILITY_PATTERN,
   type TemplateLockSchema,
   type TemplateLockValues,
 } from './templateLockMode';
+import {
+  finalizeStaffEducationValues,
+  type StaffEducationStructuredState,
+} from './staffEducationTemplateLock';
+import {
+  buildGuidelineSubjectiveTrigger,
+  isInvalidSubjectiveAssessmentTrigger,
+} from './templateLockSubjectiveTriggers';
+
+function ensureSubjectiveAssessmentTrigger(
+  values: TemplateLockValues,
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  terminology: string,
+): void {
+  const aiTrigger = values.subjective.assessmentTrigger?.trim();
+  if (aiTrigger && !isInvalidSubjectiveAssessmentTrigger(aiTrigger)) {
+    return;
+  }
+
+  values.subjective.assessmentTrigger = buildGuidelineSubjectiveTrigger(
+    def,
+    assessmentType,
+    input,
+    terminology,
+  );
+}
+
+function ensureEnteralFeedingRateValue(
+  values: TemplateLockValues,
+  schema: TemplateLockSchema,
+  input: string,
+): void {
+  const hasField = schema.fields.some((field) => field.id === 'enteralFeedingRate');
+  if (!hasField) return;
+  if (values.objective.enteralFeedingRate?.trim()) return;
+  if (ENTERAL_FEEDING_APPLICABILITY_PATTERN.test(input)) return;
+  values.objective.enteralFeedingRate = 'N/A';
+}
+
+function finalizeStructuredTemplateLockValues(
+  values: TemplateLockValues,
+  schema: TemplateLockSchema,
+  input: string,
+  def: GuidelineDefinition,
+  assessmentType: AssessmentType,
+  terminology: string,
+  autoGenerateStaffInstructionContent = true,
+): StaffEducationStructuredState {
+  ensureEnteralFeedingRateValue(values, schema, input);
+  ensureSubjectiveAssessmentTrigger(values, input, def, assessmentType, terminology);
+  return finalizeStaffEducationValues(values, schema, input, def, assessmentType, {
+    autoGenerateStaffInstructionContent,
+  });
+}
 
 function setIfEmpty(
   target: Record<string, string>,
@@ -113,20 +170,6 @@ function populateElevatedTemperatureFollowUp(
   }
 }
 
-function extractVomitingEventReport(input: string): string | null {
-  const dspMatch = input.match(/\bDSP reported[^.]+\./i);
-  if (dspMatch) return dspMatch[0].trim();
-
-  const episodeMatch = input.match(/\b(?:one|single)\s+emesis episode[^.]+\./i);
-  if (episodeMatch) return episodeMatch[0].trim();
-
-  const eventTime = parseDocumentedEventTime(input);
-  if (eventTime && /emesis|vomit/i.test(input)) {
-    return `Emesis episode reported at ${eventTime}.`;
-  }
-  return null;
-}
-
 function populateVomitingFollowUp(
   values: TemplateLockValues,
   input: string,
@@ -158,8 +201,6 @@ function populateVomitingFollowUp(
   if (/sitting upright|upright/i.test(input)) {
     setIfEmpty(values.objective, 'positioningPerPnmp', 'Sitting upright.');
   }
-
-  setIfEmpty(values.subjective, 'sectionNarrative', extractVomitingEventReport(input));
 
   if (/vomit|emesis/i.test(input)) {
     const modifiers: string[] = [];
@@ -287,6 +328,9 @@ export function mergeTemplateLockValues(
   merged.subjective.sectionNarrative =
     aiValues.subjective.sectionNarrative || deterministicValues.subjective.sectionNarrative || '';
 
+  merged.subjective.assessmentTrigger =
+    aiValues.subjective.assessmentTrigger || deterministicValues.subjective.assessmentTrigger || '';
+
   return merged;
 }
 
@@ -344,11 +388,13 @@ export function buildTemplateLockDocumentation(args: {
   def: GuidelineDefinition;
   assessmentType: AssessmentType;
   terminology: string;
+  autoGenerateStaffInstructionContent?: boolean;
 }): {
   values: TemplateLockValues;
   schema: TemplateLockSchema;
   soap: { subjective: string; objective: string; assessment: string; plan: string };
   validationErrors: string[];
+  staffEducation: StaffEducationStructuredState;
 } {
   const deterministicValues = populateTemplateLockValuesFromInput(
     emptyTemplateLockValues(),
@@ -359,6 +405,15 @@ export function buildTemplateLockDocumentation(args: {
     args.terminology,
   );
   const mergedValues = mergeTemplateLockValues(args.aiValues, deterministicValues, args.schema);
+  const staffEducation = finalizeStructuredTemplateLockValues(
+    mergedValues,
+    args.schema,
+    args.input,
+    args.def,
+    args.assessmentType,
+    args.terminology,
+    args.autoGenerateStaffInstructionContent ?? true,
+  );
   const validation = validateTemplateLockValues(mergedValues, args.schema, args.input);
   const soap = renderTemplateLockSoap(args.schema, validation.values);
 
@@ -367,5 +422,6 @@ export function buildTemplateLockDocumentation(args: {
     schema: args.schema,
     soap,
     validationErrors: [...validation.errors],
+    staffEducation,
   };
 }
