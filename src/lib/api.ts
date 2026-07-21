@@ -13,11 +13,9 @@ import type {
 import { GUIDELINES, SOAP_OUTPUT_LABEL, getOptionalOutputLabel } from '../constants';
 import { stripMarkdown } from './structuredDocumentation';
 
-const DEFAULT_SUPABASE_URL = 'https://rsdcrgzejnaotpeeauep.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_ISpr5Ztcdx_5kcnGcnaRlA_CISIDfX4';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || DEFAULT_SUPABASE_ANON_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim();
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+const REQUEST_TIMEOUT_MS = 60_000;
 
 function requireSupabaseConfig(): { url: string; anonKey: string } {
   if (!SUPABASE_URL?.trim() || !SUPABASE_ANON_KEY?.trim()) {
@@ -72,17 +70,35 @@ function buildSupplementsPayload(supplements: MissingInfoItem[]) {
 
 async function callGenerateDocumentation(body: GenerateRequest): Promise<GenerateResponse> {
   const { url, anonKey } = requireSupabaseConfig();
-  const response = await fetch(`${url}${FUNCTION_PATH}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${anonKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(`${url}${FUNCTION_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Documentation generation timed out. Please check your connection and try again.');
+    }
+    throw new Error('Unable to reach the documentation service. Check your connection and try again.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let message = response.status === 429
+      ? 'The documentation service is busy. Please wait a moment and try again.'
+      : response.status >= 500
+        ? 'The documentation service is temporarily unavailable. Please try again.'
+        : `The documentation request could not be completed (${response.status}).`;
     try {
       const errBody = await response.json();
       if (errBody.error) message = errBody.error;
@@ -92,7 +108,12 @@ async function callGenerateDocumentation(body: GenerateRequest): Promise<Generat
     throw new Error(message);
   }
 
-  const data: GenerateResponse = await response.json();
+  let data: GenerateResponse;
+  try {
+    data = await response.json() as GenerateResponse;
+  } catch {
+    throw new Error('The documentation service returned an invalid response. Please try again.');
+  }
   if (data.error) {
     throw new Error(data.error);
   }

@@ -15,8 +15,28 @@ function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      const parsed = JSON.parse(raw) as Partial<Settings>;
+      return {
+        theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system'
+          ? parsed.theme
+          : DEFAULT_SETTINGS.theme,
+        terminology: parsed.terminology === 'resident'
+          || parsed.terminology === 'patient'
+          || parsed.terminology === 'client'
+          || parsed.terminology === 'individual'
+          ? parsed.terminology
+          : DEFAULT_SETTINGS.terminology,
+        language: parsed.language === 'english' || parsed.language === 'korean' || parsed.language === 'spanish'
+          ? parsed.language
+          : DEFAULT_SETTINGS.language,
+        autoCompleteStaffEducation: typeof parsed.autoCompleteStaffEducation === 'boolean'
+          ? parsed.autoCompleteStaffEducation
+          : DEFAULT_SETTINGS.autoCompleteStaffEducation,
+        autoConfirmStaffInstructionFromNursingInterventions:
+          typeof parsed.autoConfirmStaffInstructionFromNursingInterventions === 'boolean'
+            ? parsed.autoConfirmStaffInstructionFromNursingInterventions
+            : DEFAULT_SETTINGS.autoConfirmStaffInstructionFromNursingInterventions,
+      };
     }
   } catch {
     // ignore

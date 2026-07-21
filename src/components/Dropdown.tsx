@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useId, type ReactNode } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 interface Option {
@@ -20,6 +20,9 @@ interface DropdownProps {
 export function Dropdown({ label, icon, value, options, onChange, placeholder }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const labelId = useId();
+  const listboxId = useId();
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -27,22 +30,37 @@ export function Dropdown({ label, icon, value, options, onChange, placeholder }:
         setOpen(false);
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const selected = options.find((o) => o.id === value);
 
   return (
     <div className="w-full">
-      <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-pink-700 dark:text-pink-200">
+      <div id={labelId} className="mb-2 flex items-center gap-2 text-sm font-semibold text-pink-700 dark:text-pink-200">
         {icon}
         {label}
-      </label>
+      </div>
       <div className="relative" ref={ref}>
         <button
+          ref={buttonRef}
           type="button"
           onClick={() => setOpen((o) => !o)}
+          aria-labelledby={labelId}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listboxId}
           className="flex w-full items-center justify-between rounded-2xl border-2 border-pink-100 bg-white px-4 py-3.5 text-left text-gray-800 shadow-soft transition-all hover:border-pink-300 hover:shadow-soft-lg focus:border-pink-400 focus:outline-none focus:ring-4 focus:ring-pink-400/15 dark:border-pink-900/40 dark:bg-gray-800 dark:text-gray-100 dark:hover:border-pink-700"
         >
           <span className="flex items-center gap-2.5 truncate">
@@ -61,11 +79,18 @@ export function Dropdown({ label, icon, value, options, onChange, placeholder }:
         </button>
 
         {open && (
-          <div className="absolute z-50 mt-2 max-h-72 w-full animate-scale-in overflow-y-auto rounded-2xl border border-pink-100 bg-white py-2 shadow-soft-lg dark:border-pink-900/40 dark:bg-gray-800">
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-labelledby={labelId}
+            className="absolute z-50 mt-2 max-h-72 w-full animate-scale-in overflow-y-auto rounded-2xl border border-pink-100 bg-white py-2 shadow-soft-lg dark:border-pink-900/40 dark:bg-gray-800"
+          >
             {options.map((opt) => (
               <button
                 key={opt.id}
                 type="button"
+                role="option"
+                aria-selected={opt.id === value}
                 onClick={() => {
                   onChange(opt.id);
                   setOpen(false);

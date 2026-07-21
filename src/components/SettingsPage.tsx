@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { X, Sun, Moon, Monitor, User, Globe } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext';
 import type { ThemeMode, Terminology, Language } from '../types';
@@ -28,21 +29,69 @@ const LANGUAGE_OPTIONS: { id: Language; label: string; native: string }[] = [
 
 export function SettingsPage({ open, onClose }: SettingsPageProps) {
   const { settings, setTheme, setTerminology, setLanguage, setAutoCompleteStaffEducation, setAutoConfirmStaffInstructionFromNursingInterventions } = useSettings();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [open, onClose]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div
+      <button
+        type="button"
+        aria-label="Close settings"
         className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative max-h-[90vh] w-full max-w-lg animate-scale-in overflow-y-auto rounded-t-4xl bg-white p-6 shadow-soft-lg dark:bg-gray-800 sm:rounded-4xl sm:p-8">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        className="relative max-h-[90vh] w-full max-w-lg animate-scale-in overflow-y-auto rounded-t-4xl bg-white p-6 shadow-soft-lg dark:bg-gray-800 sm:rounded-4xl sm:p-8"
+      >
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-gray-800 dark:text-gray-100">
+          <h2 id="settings-title" className="font-display text-xl font-bold text-gray-800 dark:text-gray-100">
             Settings
           </h2>
           <button
+            ref={closeButtonRef}
+            type="button"
             onClick={onClose}
             className="flex h-9 w-9 items-center justify-center rounded-2xl text-gray-400 transition-all hover:bg-pink-50 hover:text-pink-600 active:scale-95 dark:hover:bg-pink-900/20"
             aria-label="Close settings"
@@ -64,6 +113,7 @@ export function SettingsPage({ open, onClose }: SettingsPageProps) {
               return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => setTheme(opt.id)}
                   className={`flex flex-col items-center gap-2 rounded-2xl border-2 px-3 py-4 transition-all active:scale-95 ${
                     active
@@ -91,6 +141,7 @@ export function SettingsPage({ open, onClose }: SettingsPageProps) {
               return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => setTerminology(opt.id)}
                   className={`rounded-2xl border-2 px-3 py-3.5 text-sm font-semibold transition-all active:scale-95 ${
                     active
@@ -158,6 +209,7 @@ export function SettingsPage({ open, onClose }: SettingsPageProps) {
               return (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => setLanguage(opt.id)}
                   className={`flex w-full items-center justify-between rounded-2xl border-2 px-4 py-3.5 transition-all active:scale-[0.98] ${
                     active

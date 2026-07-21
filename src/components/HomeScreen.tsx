@@ -281,7 +281,7 @@ export function HomeScreen() {
         </div>
 
         <div className="rounded-4xl border-2 border-pink-100 bg-white p-5 shadow-soft dark:border-pink-900/40 dark:bg-gray-800 sm:p-6">
-          <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-pink-700 dark:text-pink-200">
+          <label htmlFor="clinical-information" className="mb-2 flex items-center gap-2 text-sm font-semibold text-pink-700 dark:text-pink-200">
             <FileText className="h-4 w-4" />
             Clinical Information
           </label>
@@ -293,6 +293,7 @@ export function HomeScreen() {
             />
           )}
           <textarea
+            id="clinical-information"
             value={clinicalInfo}
             onChange={(e) => setClinicalInfo(e.target.value)}
             placeholder="Describe the resident's condition in English, Korean, or Spanish. Example: The resident was sleeping comfortably. Oxygen saturation was 95% on room air..."
@@ -309,7 +310,7 @@ export function HomeScreen() {
         </div>
 
         {error && (
-          <div className="flex items-start gap-3 rounded-2xl border-2 border-red-200 bg-red-50 p-4 dark:border-red-800/40 dark:bg-red-900/10">
+          <div role="alert" className="flex items-start gap-3 rounded-2xl border-2 border-red-200 bg-red-50 p-4 dark:border-red-800/40 dark:bg-red-900/10">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500 dark:text-red-400" />
             <div className="flex-1">
               <p className="text-sm font-semibold text-red-700 dark:text-red-300">
@@ -337,6 +338,7 @@ export function HomeScreen() {
           type="button"
           onClick={startGeneration}
           disabled={!canGenerate || generating}
+          aria-busy={generating}
           className={`flex w-full items-center justify-center gap-2.5 rounded-4xl px-6 py-4 text-base font-bold transition-all ${
             canGenerate && !generating
               ? 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-soft-lg hover:scale-[1.01] active:scale-[0.99]'
@@ -355,6 +357,10 @@ export function HomeScreen() {
             </>
           )}
         </button>
+
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {generating ? 'Generating documentation.' : phase === 'result' ? 'Documentation generated.' : ''}
+        </div>
 
         {!canGenerate && !generating && (
           <p className="text-center text-xs text-gray-400 dark:text-gray-500">

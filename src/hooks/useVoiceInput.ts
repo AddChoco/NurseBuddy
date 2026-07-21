@@ -24,6 +24,23 @@ interface SpeechRecognitionLike extends EventTarget {
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
+const SPEECH_RECOGNITION_ERRORS: Record<string, string> = {
+  'no-speech': 'No speech was detected. Please try again and speak clearly into your microphone.',
+  'audio-capture': 'No microphone was found or it is unavailable. Check your microphone connection and browser settings.',
+  'not-allowed': 'Microphone access was denied. Please allow microphone access in your browser settings.',
+  'service-not-allowed': 'Microphone access was denied. Please allow microphone access in your browser settings.',
+  network: 'A network error interrupted voice input. Check your connection and try again.',
+  aborted: 'Voice input was canceled. Tap the microphone to try again.',
+};
+
+export const UNSUPPORTED_SPEECH_RECOGNITION_MESSAGE =
+  'Voice input is not supported in this browser. Please use a browser that supports speech recognition.';
+
+export function getSpeechRecognitionErrorMessage(errorCode: string): string {
+  return SPEECH_RECOGNITION_ERRORS[errorCode]
+    ?? 'Voice input could not understand the request. Please try again.';
+}
+
 const LANG_MAP: Record<Language, string> = {
   english: 'en-US',
   korean: 'ko-KR',
@@ -55,12 +72,14 @@ export function useVoiceInput({ language, onResult }: UseVoiceInputOptions) {
       ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
     if (!Ctor) {
       setSupported(false);
+      setListening(false);
+      setError(UNSUPPORTED_SPEECH_RECOGNITION_MESSAGE);
       return;
     }
     const recognition = new Ctor();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = LANG_MAP[language];
+    recognition.lang = LANG_MAP[languageRef.current];
 
     recognition.onresult = (e: SpeechRecognitionEvent) => {
       let finalText = '';
@@ -76,14 +95,8 @@ export function useVoiceInput({ language, onResult }: UseVoiceInputOptions) {
     };
 
     recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setError('Microphone access was denied. Please allow microphone access in your browser settings.');
-      } else if (e.error === 'no-speech') {
-        // ignore — just ended
-      } else {
-        setError(`Voice input error: ${e.error}`);
-      }
       setListening(false);
+      setError(getSpeechRecognitionErrorMessage(e.error));
     };
 
     recognition.onend = () => {
@@ -108,19 +121,27 @@ export function useVoiceInput({ language, onResult }: UseVoiceInputOptions) {
   const start = useCallback(() => {
     setError(null);
     const rec = recognitionRef.current;
-    if (!rec) return;
+    if (!rec) {
+      setListening(false);
+      setError(UNSUPPORTED_SPEECH_RECOGNITION_MESSAGE);
+      return;
+    }
     try {
       rec.lang = LANG_MAP[languageRef.current];
       rec.start();
       setListening(true);
     } catch {
-      // already started
+      setListening(false);
+      setError('Voice input could not start. Please wait a moment and try again.');
     }
   }, []);
 
   const stop = useCallback(() => {
-    recognitionRef.current?.stop();
-    setListening(false);
+    try {
+      recognitionRef.current?.stop();
+    } finally {
+      setListening(false);
+    }
   }, []);
 
   const toggle = useCallback(() => {
